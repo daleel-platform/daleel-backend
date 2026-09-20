@@ -3,7 +3,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AppConfigModule } from './config/index.js';
-import { PrismaModule } from './prisma/index.js';
+import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
   imports: [

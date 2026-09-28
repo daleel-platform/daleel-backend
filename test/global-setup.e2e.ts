@@ -3,13 +3,13 @@ import { execSync } from 'node:child_process';
 import pg from 'pg';
 
 export default async function setup() {
-  // Load .env.test and enforce test environment
-  dotenv.config({ path: '.env.test', override: true });
+  // Load .env.test if present locally; otherwise rely on process.env (e.g. in CI)
+  dotenv.config({ path: '.env.test' });
   process.env.NODE_ENV = 'test';
 
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error('DATABASE_URL is not defined in .env.test');
+    throw new Error('DATABASE_URL is not defined in environment or .env.test');
   }
 
   try {

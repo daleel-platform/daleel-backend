@@ -1,0 +1,98 @@
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service.js';
+import { CreateUserDto } from './dto/create-user.dto.js';
+import { UpdateUserDto } from './dto/update-user.dto.js';
+
+export type UserWithMentorProfile = Prisma.UserGetPayload<{
+  include: { mentorProfile: true };
+}>;
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Creates a new user. Called by the Auth module during registration or by seed scripts.
+   */
+  async createUser(dto: CreateUserDto): Promise<UserWithMentorProfile> {
+    const normalizedEmail = dto.email.trim().toLowerCase();
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('A user with this email already exists');
+    }
+
+    return this.prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        name: dto.name.trim(),
+        passwordHash: dto.passwordHash,
+        avatarUrl: dto.avatarUrl,
+        bio: dto.bio,
+        interests: dto.interests ?? [],
+      },
+      include: {
+        mentorProfile: true,
+      },
+    });
+  }
+
+  /**
+   * Retrieves a user by their unique ID, including their mentor profile if present.
+   */
+  async findById(id: string): Promise<UserWithMentorProfile> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        mentorProfile: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID "${id}" not found`);
+    }
+
+    return user;
+  }
+
+  /**
+   * Retrieves a user by email, including their mentor profile.
+   */
+  async findByEmail(email: string): Promise<UserWithMentorProfile | null> {
+    return this.prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      include: {
+        mentorProfile: true,
+      },
+    });
+  }
+
+  /**
+   * Updates profile fields for an existing user.
+   */
+  async update(id: string, dto: UpdateUserDto): Promise<UserWithMentorProfile> {
+    // Ensures user exists before updating, throwing NotFoundException if not found
+    await this.findById(id);
+
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name.trim() }),
+        ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+        ...(dto.bio !== undefined && { bio: dto.bio }),
+        ...(dto.interests !== undefined && { interests: dto.interests }),
+      },
+      include: {
+        mentorProfile: true,
+      },
+    });
+  }
+}

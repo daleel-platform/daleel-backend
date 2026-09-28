@@ -5,3 +5,36 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model User {
+  id           String         @id @default(uuid())
+  email        String         @unique
+  passwordHash String         @map("password_hash")
+  name         String
+  avatarUrl    String?        @map("avatar_url")
+  bio          String?
+  interests    String[]       @default([])
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  mentorProfile MentorProfile?
+
+  @@map("users")
+}
+
+model MentorProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique @map("user_id")
+  headline          String
+  about             String
+  skills            String[] @default([])
+  yearsOfExperience Int?     @map("years_of_experience")
+  linkedinUrl       String?  @map("linkedin_url")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("mentor_profiles")
+}

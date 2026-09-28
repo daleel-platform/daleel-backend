@@ -111,6 +111,7 @@ This prevents accidental data leaks (passwords, internal fields) and decouples t
 - Use **transactions** for operations that modify multiple tables.
 - Keep Prisma schema as the single source of truth for the database.
 - Map model names to snake_case table/column names using `@@map` / `@map`.
+- Always generate and commit database migrations for schema changes using `pnpm prisma:migrate:dev --name <descriptive_name>`. Never push unmigrated schema changes.
 
 ## Testing
 

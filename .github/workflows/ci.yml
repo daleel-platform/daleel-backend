@@ -50,13 +50,14 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Setup test environment
+        run: cp .env.test.example .env.test
+
       - name: Unit Tests
         run: pnpm test
 
       - name: E2E Tests
         run: pnpm test:e2e
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/daleel-test?schema=public
 
       - name: Build
         run: pnpm build

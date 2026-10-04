@@ -5,15 +5,16 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
-  UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import {
-  ApiHeader,
+  ApiBearerAuth,
   ApiOperation,
   ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { CurrentUser, Serialize } from '../../common/index.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
 import { UserResponseDto } from './dto/user-response.dto.js';
@@ -26,12 +27,9 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user profile' })
-  @ApiHeader({
-    name: 'x-user-id',
-    description: 'Current user UUID (interim authentication placeholder)',
-    required: false,
-  })
   @ApiResponse({
     status: 200,
     description: 'Profile of currently authenticated user',
@@ -39,12 +37,7 @@ export class UsersController {
   })
   @ApiResponse({ status: 401, description: 'User not authenticated' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async getMe(
-    @CurrentUser() userId: string | undefined,
-  ): Promise<UserWithMentorProfile> {
-    if (!userId) {
-      throw new UnauthorizedException('User not authenticated');
-    }
+  async getMe(@CurrentUser() userId: string): Promise<UserWithMentorProfile> {
     return this.usersService.findById(userId);
   }
 

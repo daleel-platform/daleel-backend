@@ -3,6 +3,8 @@ import {
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -15,6 +17,7 @@ describe('UsersController (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let testUserId: string;
+  let accessToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -57,6 +60,14 @@ describe('UsersController (e2e)', () => {
       },
     });
     testUserId = user.id;
+
+    accessToken = await app.get(JwtService).signAsync(
+      { sub: testUserId },
+      {
+        secret: app.get(ConfigService).getOrThrow<string>('JWT_SECRET'),
+        expiresIn: 900,
+      },
+    );
   });
 
   afterAll(async () => {
@@ -71,19 +82,19 @@ describe('UsersController (e2e)', () => {
   });
 
   describe('GET /api/v1/users/me', () => {
-    it('should return 401 when x-user-id header is missing', async () => {
+    it('should return 401 when the bearer token is missing', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/v1/users/me')
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('User not authenticated');
+      expect(response.body.message).toContain('Invalid access token');
     });
 
     it('should return current user profile and NEVER leak passwordHash', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/v1/users/me')
-        .set('x-user-id', testUserId)
+        .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);

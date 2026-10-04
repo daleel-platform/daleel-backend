@@ -114,13 +114,20 @@ src/
 
 ## Environment Variables
 
-| Variable         | Description                  | Example                                                          |
-| ---------------- | ---------------------------- | ---------------------------------------------------------------- |
-| `NODE_ENV`       | Runtime environment          | `development`                                                    |
-| `PORT`           | Server port                  | `3000`                                                           |
-| `DATABASE_URL`   | PostgreSQL connection string | `postgresql://user:password@localhost:5432/daleel?schema=public` |
-| `JWT_SECRET`     | Secret for signing JWTs      | _(use a strong random value)_                                    |
-| `JWT_EXPIRATION` | Token lifetime               | `7d`                                                             |
+| Variable                 | Description                                                       | Example                                                          |
+| ------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `NODE_ENV`               | Runtime environment                                               | `development`                                                    |
+| `PORT`                   | Server port                                                       | `3000`                                                           |
+| `DATABASE_URL`           | PostgreSQL connection string                                      | `postgresql://user:password@localhost:5432/daleel?schema=public` |
+| `JWT_SECRET`             | Secret for signing access JWTs (at least 32 characters)           | _(use a strong random value)_                                    |
+| `JWT_REFRESH_SECRET`     | Separate secret for signing refresh JWTs (at least 32 characters) | _(use a different strong random value)_                          |
+| `JWT_ACCESS_EXPIRES_IN`  | Access-token lifetime in seconds                                  | `900`                                                            |
+| `JWT_REFRESH_EXPIRES_IN` | Refresh-token lifetime in seconds                                 | `604800`                                                         |
+| `BCRYPT_SALT_ROUNDS`     | Bcrypt cost factor (4–31; use a low value only in tests)          | `12`                                                             |
+
+Access tokens expire after 15 minutes by default. Refresh tokens expire after
+7 days by default and are sent in an HTTP-only, same-site cookie (secure in
+production). Use separate, random secrets and do not commit them.
 
 ## License
 

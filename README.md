@@ -119,8 +119,12 @@ src/
 | `NODE_ENV`       | Runtime environment          | `development`                                                    |
 | `PORT`           | Server port                  | `3000`                                                           |
 | `DATABASE_URL`   | PostgreSQL connection string | `postgresql://user:password@localhost:5432/daleel?schema=public` |
-| `JWT_SECRET`     | Secret for signing JWTs      | _(use a strong random value)_                                    |
-| `JWT_EXPIRATION` | Token lifetime               | `7d`                                                             |
+| `JWT_SECRET`         | Secret for signing access JWTs (at least 32 characters) | _(use a strong random value)_ |
+| `JWT_REFRESH_SECRET` | Separate secret for signing refresh JWTs (at least 32 characters) | _(use a different strong random value)_ |
+
+Access tokens expire after 15 minutes. Refresh tokens expire after 7 days and
+are sent in an HTTP-only, same-site cookie (secure in production). Use separate,
+random secrets and do not commit them.
 
 ## License
 

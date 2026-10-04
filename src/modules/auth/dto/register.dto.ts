@@ -1,12 +1,9 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsArray,
   IsByteLength,
   IsEmail,
   IsNotEmpty,
-  IsOptional,
   IsString,
-  IsUrl,
   Matches,
   MaxLength,
 } from 'class-validator';
@@ -31,21 +28,4 @@ export class RegisterDto {
   @IsByteLength(8, 72)
   @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/)
   password!: string;
-
-  @ApiPropertyOptional({ example: 'https://example.com/avatar.jpg' })
-  @IsUrl()
-  @IsOptional()
-  avatarUrl?: string;
-
-  @ApiPropertyOptional({ example: 'Software engineer interested in mentoring' })
-  @IsString()
-  @MaxLength(500)
-  @IsOptional()
-  bio?: string;
-
-  @ApiPropertyOptional({ type: [String], example: ['Web Development'] })
-  @IsArray()
-  @IsString({ each: true })
-  @IsOptional()
-  interests?: string[];
 }

@@ -1,27 +1,19 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { compare, hash } from 'bcryptjs';
 import { CreateUserDto } from '../users/dto/create-user.dto.js';
-import type { UserWithMentorProfile } from '../users/users.service.js';
-import { UsersService } from '../users/users.service.js';
+import {
+  UsersService,
+  type UserWithMentorProfile,
+} from '../users/users.service.js';
+import type { AuthSession, TokenPayload } from './auth.types.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
-
-const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
-
-interface TokenPayload {
-  sub: string;
-  type: 'access' | 'refresh';
-}
-
-export interface AuthSession {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  user: UserWithMentorProfile;
-}
 
 @Injectable()
 export class AuthService {
@@ -32,13 +24,12 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthSession> {
+    const saltRounds =
+      this.configService.getOrThrow<number>('BCRYPT_SALT_ROUNDS');
     const userDto: CreateUserDto = {
       email: dto.email,
       name: dto.name,
-      passwordHash: await hash(dto.password, 12),
-      ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
-      ...(dto.bio !== undefined && { bio: dto.bio }),
-      ...(dto.interests !== undefined && { interests: dto.interests }),
+      passwordHash: await hash(dto.password, saltRounds),
     };
     const user = await this.usersService.createUser(userDto);
 
@@ -47,8 +38,10 @@ export class AuthService {
 
   async login(dto: LoginDto): Promise<AuthSession> {
     const user = await this.usersService.findByEmail(dto.email);
+    const saltRounds =
+      this.configService.getOrThrow<number>('BCRYPT_SALT_ROUNDS');
     if (!user) {
-      await hash(dto.password, 12);
+      await hash(dto.password, saltRounds);
       throw new UnauthorizedException('Invalid email or password');
     }
     if (!(await compare(dto.password, user.passwordHash))) {
@@ -81,13 +74,20 @@ export class AuthService {
     if (
       typeof payload !== 'object' ||
       payload === null ||
-      typeof payload.sub !== 'string' ||
-      payload.type !== 'refresh'
+      typeof payload.sub !== 'string'
     ) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const user = await this.usersService.findById(payload.sub);
+    let user: UserWithMentorProfile;
+    try {
+      user = await this.usersService.findById(payload.sub);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+      throw error;
+    }
     return this.issueTokens(user);
   }
 
@@ -95,19 +95,25 @@ export class AuthService {
     const accessSecret = this.configService.getOrThrow<string>('JWT_SECRET');
     const refreshSecret =
       this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
+    const accessTtl = this.configService.getOrThrow<number>(
+      'JWT_ACCESS_EXPIRES_IN',
+    );
+    const refreshTtl = this.configService.getOrThrow<number>(
+      'JWT_REFRESH_EXPIRES_IN',
+    );
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(
-        { sub: user.id, type: 'access' } satisfies TokenPayload,
+        { sub: user.id } satisfies TokenPayload,
         {
           secret: accessSecret,
-          expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+          expiresIn: accessTtl,
         } satisfies JwtSignOptions,
       ),
       this.jwtService.signAsync(
-        { sub: user.id, type: 'refresh' } satisfies TokenPayload,
+        { sub: user.id } satisfies TokenPayload,
         {
           secret: refreshSecret,
-          expiresIn: REFRESH_TOKEN_TTL_SECONDS,
+          expiresIn: refreshTtl,
         } satisfies JwtSignOptions,
       ),
     ]);
@@ -115,7 +121,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      expiresIn: accessTtl,
       user,
     };
   }

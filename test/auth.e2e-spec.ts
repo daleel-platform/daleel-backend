@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
+import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import {
   afterAll,
@@ -16,10 +17,10 @@ import {
   it,
   vi,
 } from 'vitest';
-import { AllExceptionsFilter } from '../../common/filters/all-exceptions.filter.js';
-import { ResponseInterceptor } from '../../common/interceptors/response.interceptor.js';
-import { AuthController } from './auth.controller.js';
-import { AuthService } from './auth.service.js';
+import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter.js';
+import { ResponseInterceptor } from '../src/common/interceptors/response.interceptor.js';
+import { AuthController } from '../src/modules/auth/auth.controller.js';
+import { AuthService } from '../src/modules/auth/auth.service.js';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -55,11 +56,23 @@ describe('AuthController (e2e)', () => {
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: authService },
-        { provide: ConfigService, useValue: { get: () => 'test' } },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: () => 'test',
+            getOrThrow: (key: string) => {
+              if (key === 'JWT_REFRESH_EXPIRES_IN') {
+                return 604800;
+              }
+              throw new Error(`Unexpected config key: ${key}`);
+            },
+          },
+        },
       ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.setGlobalPrefix('api');
     app.enableVersioning({
       type: VersioningType.URI,
@@ -102,6 +115,7 @@ describe('AuthController (e2e)', () => {
     );
     expect(response.headers['set-cookie'][0]).toMatch(/HttpOnly/i);
     expect(response.headers['set-cookie'][0]).toMatch(/SameSite=Strict/i);
+    expect(response.headers['set-cookie'][0]).toMatch(/Max-Age=604800/i);
   });
 
   it('rejects passwords that do not meet registration complexity rules', async () => {
@@ -111,6 +125,20 @@ describe('AuthController (e2e)', () => {
         email: 'test@example.com',
         name: 'Test User',
         password: 'weakpass',
+      })
+      .expect(400);
+
+    expect(authService.register).not.toHaveBeenCalled();
+  });
+
+  it('rejects onboarding fields during registration', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'test@example.com',
+        name: 'Test User',
+        password: 'SecurePass1!',
+        bio: 'Collected during onboarding',
       })
       .expect(400);
 

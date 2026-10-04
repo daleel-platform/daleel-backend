@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -54,8 +54,22 @@ describe('AuthService', () => {
         {
           provide: ConfigService,
           useValue: {
-            getOrThrow: (key: string) =>
-              key === 'JWT_SECRET' ? 'a'.repeat(32) : 'b'.repeat(32),
+            getOrThrow: (key: string) => {
+              switch (key) {
+                case 'JWT_SECRET':
+                  return 'a'.repeat(32);
+                case 'JWT_REFRESH_SECRET':
+                  return 'b'.repeat(32);
+                case 'JWT_ACCESS_EXPIRES_IN':
+                  return 900;
+                case 'JWT_REFRESH_EXPIRES_IN':
+                  return 604800;
+                case 'BCRYPT_SALT_ROUNDS':
+                  return 4;
+                default:
+                  throw new Error(`Unexpected config key: ${key}`);
+              }
+            },
           },
         },
       ],
@@ -86,6 +100,16 @@ describe('AuthService', () => {
       refreshToken: 'refresh-token',
       expiresIn: 900,
     });
+    expect(jwtService.signAsync).toHaveBeenNthCalledWith(
+      1,
+      { sub: user.id },
+      { secret: 'a'.repeat(32), expiresIn: 900 },
+    );
+    expect(jwtService.signAsync).toHaveBeenNthCalledWith(
+      2,
+      { sub: user.id },
+      { secret: 'b'.repeat(32), expiresIn: 604800 },
+    );
   });
 
   it('issues tokens when the password is valid', async () => {
@@ -117,28 +141,27 @@ describe('AuthService', () => {
     ).rejects.toThrow('Invalid email or password');
   });
 
-  it('rejects access tokens presented for refresh', async () => {
-    jwtService.verifyAsync.mockResolvedValue({
-      sub: user.id,
-      type: 'access',
-    });
-
-    await expect(service.refresh('access-token')).rejects.toThrow(
-      UnauthorizedException,
-    );
-    expect(usersService.findById).not.toHaveBeenCalled();
-  });
-
   it('rotates token pair for a valid refresh token', async () => {
-    jwtService.verifyAsync.mockResolvedValue({
-      sub: user.id,
-      type: 'refresh',
-    });
+    jwtService.verifyAsync.mockResolvedValue({ sub: user.id });
     usersService.findById.mockResolvedValue(user);
 
     const session = await service.refresh('refresh-token');
 
+    expect(jwtService.verifyAsync).toHaveBeenCalledWith('refresh-token', {
+      secret: 'b'.repeat(32),
+    });
     expect(usersService.findById).toHaveBeenCalledWith(user.id);
     expect(session.refreshToken).toBe('refresh-token');
+  });
+
+  it('returns unauthorized when the refresh token user no longer exists', async () => {
+    jwtService.verifyAsync.mockResolvedValue({ sub: user.id });
+    usersService.findById.mockRejectedValue(
+      new NotFoundException('User not found'),
+    );
+
+    await expect(service.refresh('refresh-token')).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 });

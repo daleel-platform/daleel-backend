@@ -17,14 +17,14 @@ import {
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { Serialize } from '../../common/index.js';
-import { AuthService, type AuthSession } from './auth.service.js';
+import type { AuthSession } from './auth.types.js';
+import { AuthService } from './auth.service.js';
 import { AuthResponseDto } from './dto/auth-response.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const REFRESH_COOKIE_PATH = '/api/v1/auth';
-const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -43,7 +43,7 @@ export class AuthController {
   async register(
     @Body() dto: RegisterDto,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<AuthSession> {
+  ): Promise<AuthResponseDto> {
     return this.withRefreshCookie(
       response,
       await this.authService.register(dto),
@@ -59,7 +59,7 @@ export class AuthController {
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<AuthSession> {
+  ): Promise<AuthResponseDto> {
     return this.withRefreshCookie(response, await this.authService.login(dto));
   }
 
@@ -73,8 +73,11 @@ export class AuthController {
   async refresh(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<AuthSession> {
-    const refreshToken = this.getRefreshToken(request);
+  ): Promise<AuthResponseDto> {
+    const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME];
+    if (typeof refreshToken !== 'string' || refreshToken.length === 0) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
     return this.withRefreshCookie(
       response,
       await this.authService.refresh(refreshToken),
@@ -84,28 +87,21 @@ export class AuthController {
   private withRefreshCookie(
     response: Response,
     session: AuthSession,
-  ): AuthSession {
+  ): AuthResponseDto {
+    const refreshTtl = this.configService.getOrThrow<number>(
+      'JWT_REFRESH_EXPIRES_IN',
+    );
     response.cookie(REFRESH_COOKIE_NAME, session.refreshToken, {
       httpOnly: true,
       secure: this.configService.get<string>('NODE_ENV') === 'production',
       sameSite: 'strict',
       path: REFRESH_COOKIE_PATH,
-      maxAge: REFRESH_COOKIE_MAX_AGE,
+      maxAge: refreshTtl * 1000,
     });
-    return session;
-  }
-
-  private getRefreshToken(request: Request): string {
-    const cookieHeader = request.headers.cookie;
-    const token = cookieHeader
-      ?.split(';')
-      .map((cookie) => cookie.trim())
-      .find((cookie) => cookie.startsWith(`${REFRESH_COOKIE_NAME}=`))
-      ?.slice(REFRESH_COOKIE_NAME.length + 1);
-
-    if (!token) {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
-    return token;
+    return {
+      accessToken: session.accessToken,
+      expiresIn: session.expiresIn,
+      user: session.user,
+    };
   }
 }

@@ -14,8 +14,8 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  private logger = new Logger(PrismaService.name);
-  private pool: pg.Pool;
+  private readonly logger = new Logger(PrismaService.name);
+  private readonly pool: pg.Pool;
 
   constructor(configService: ConfigService) {
     const connectionString = configService.get<string>('DATABASE_URL');

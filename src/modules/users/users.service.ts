@@ -14,7 +14,7 @@ export type UserWithMentorProfile = Prisma.UserGetPayload<{
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Creates a new user. Called by the Auth module during registration or by seed scripts.

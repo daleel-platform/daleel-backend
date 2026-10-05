@@ -5,7 +5,7 @@ import { AppService } from './app.service.js';
 @ApiTags('App')
 @Controller()
 export class AppController {
-  constructor(private appService: AppService) {}
+  constructor(private readonly appService: AppService) {}
 
   @Get()
   @ApiOperation({ summary: 'Health check endpoint' })

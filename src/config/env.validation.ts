@@ -46,6 +46,10 @@ export class EnvironmentVariables {
   JWT_REFRESH_EXPIRES_IN: number = 604800;
 
   @IsInt()
+  @Min(1)
+  PASSWORD_RESET_EXPIRES_IN: number = 1200;
+
+  @IsInt()
   @Min(4)
   @Max(31)
   BCRYPT_SALT_ROUNDS: number = 12;

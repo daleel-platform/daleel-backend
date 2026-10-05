@@ -14,7 +14,7 @@ export type UserWithMentorProfile = Prisma.UserGetPayload<{
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) {}
 
   /**
    * Creates a new user. Called by the Auth module during registration or by seed scripts.
@@ -94,5 +94,41 @@ export class UsersService {
         mentorProfile: true,
       },
     });
+  }
+
+  /** Replaces any previous reset token; only the hash is persisted. */
+  async setPasswordResetToken(
+    id: string,
+    tokenHash: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: expiresAt,
+      },
+    });
+  }
+
+  /** One atomic statement checks expiry, changes the password and consumes the token.
+   * Concurrent submissions cannot both succeed.
+   */
+  async resetPasswordWithToken(
+    tokenHash: string,
+    passwordHash: string,
+  ): Promise<boolean> {
+    const result = await this.prisma.user.updateMany({
+      where: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { gt: new Date() },
+      },
+      data: {
+        passwordHash,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+      },
+    });
+    return result.count === 1;
   }
 }

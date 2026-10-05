@@ -24,7 +24,7 @@ import { map } from 'rxjs/operators';
  */
 @Injectable()
 export class SerializeInterceptor<T extends object> implements NestInterceptor {
-  constructor(private readonly dto: new () => T) {}
+  constructor(private dto: new () => T) {}
 
   intercept(
     _context: ExecutionContext,

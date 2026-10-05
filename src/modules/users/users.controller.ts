@@ -24,7 +24,7 @@ import { UsersService, type UserWithMentorProfile } from './users.service.js';
 @Serialize(UserResponseDto)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private usersService: UsersService) {}
 
   @Get('me')
   @UseGuards(JwtAuthGuard)

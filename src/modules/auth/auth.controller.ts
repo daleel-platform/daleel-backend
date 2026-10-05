@@ -30,8 +30,8 @@ const REFRESH_COOKIE_PATH = '/api/v1/auth';
 @Controller('auth')
 export class AuthController {
   constructor(
-    private readonly authService: AuthService,
-    private readonly configService: ConfigService,
+    private authService: AuthService,
+    private configService: ConfigService,
   ) {}
 
   @Post('register')

@@ -203,6 +203,22 @@ describe('UsersService', () => {
     });
   });
 
+  it('checks token expiry without loading password data', async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: mockUser.id });
+    expect(await service.hasValidPasswordResetToken('token-hash')).toBe(true);
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: {
+        passwordResetTokenHash: 'token-hash',
+        passwordResetExpiresAt: { gt: expect.any(Date) },
+      },
+      select: { id: true },
+    });
+    prisma.user.findUnique.mockResolvedValue(null);
+    expect(await service.hasValidPasswordResetToken('invalid-token')).toBe(
+      false,
+    );
+  });
+
   it('atomically consumes only an unexpired token and updates the password', async () => {
     prisma.user.updateMany.mockResolvedValue({ count: 1 });
     expect(

@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   Max,
   Min,
   MinLength,
@@ -44,6 +45,14 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   JWT_REFRESH_EXPIRES_IN: number = 604800;
+
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    require_protocol: true,
+    protocols: ['http', 'https'],
+  })
+  PASSWORD_RESET_URL?: string;
 
   @IsInt()
   @Min(1)

@@ -13,9 +13,9 @@ const REQUEST_MESSAGE =
 @Injectable()
 export class PasswordResetService {
   constructor(
-    private users: UsersService,
-    private config: ConfigService,
-    private delivery: PasswordResetDeliveryService,
+    private readonly users: UsersService,
+    private readonly config: ConfigService,
+    private readonly delivery: PasswordResetDeliveryService,
   ) {}
 
   async requestReset(email: string): Promise<PasswordResetResponseDto> {
@@ -40,6 +40,9 @@ export class PasswordResetService {
     dto: ResetPasswordDto,
   ): Promise<PasswordResetResponseDto> {
     const tokenHash = createHash('sha256').update(dto.token).digest('hex');
+    if (!(await this.users.hasValidPasswordResetToken(tokenHash))) {
+      throw new BadRequestException('Invalid or expired password reset token');
+    }
     const passwordHash = await hash(
       dto.password,
       this.config.getOrThrow<number>('BCRYPT_SALT_ROUNDS'),

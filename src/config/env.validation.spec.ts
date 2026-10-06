@@ -41,4 +41,29 @@ describe('environment validation', () => {
       'Environment validation error',
     );
   });
+  it('allows an omitted reset URL and valid frontend URLs', () => {
+    expect(validate(validConfig).PASSWORD_RESET_URL).toBeUndefined();
+    for (const url of [
+      'http://localhost:3000/reset-password',
+      'https://example.com/reset-password',
+    ]) {
+      expect(
+        validate({ ...validConfig, PASSWORD_RESET_URL: url })
+          .PASSWORD_RESET_URL,
+      ).toBe(url);
+    }
+  });
+
+  it('rejects malformed reset URLs at startup', () => {
+    for (const url of [
+      '',
+      'not-a-url',
+      'example.com/reset-password',
+      'ftp://example.com/reset-password',
+    ]) {
+      expect(() =>
+        validate({ ...validConfig, PASSWORD_RESET_URL: url }),
+      ).toThrow('Environment validation error');
+    }
+  });
 });

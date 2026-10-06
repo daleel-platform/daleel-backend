@@ -1,23 +1,30 @@
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { compare } from 'bcryptjs';
+import { compare, hash } from 'bcryptjs';
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsersService } from '../users/users.service.js';
 import { PasswordResetDeliveryService } from './password-reset-delivery.service.js';
 import { PasswordResetService } from './password-reset.service.js';
 
+vi.mock('bcryptjs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('bcryptjs')>();
+  return { ...actual, hash: vi.fn(actual.hash) };
+});
+
 describe('PasswordResetService', () => {
   let service: PasswordResetService;
   const users = {
     findByEmail: vi.fn(),
     setPasswordResetToken: vi.fn(),
+    hasValidPasswordResetToken: vi.fn(),
     resetPasswordWithToken: vi.fn(),
   };
   const delivery = { send: vi.fn() };
   beforeEach(async () => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
+    users.hasValidPasswordResetToken.mockResolvedValue(true);
     const module = await Test.createTestingModule({
       providers: [
         PasswordResetService,
@@ -91,7 +98,19 @@ describe('PasswordResetService', () => {
     expect(passwordHash).not.toBe('NewSecurePass1!');
   });
 
-  it('rejects an invalid, expired or consumed token', async () => {
+  it('rejects invalid tokens before hashing a password', async () => {
+    users.hasValidPasswordResetToken.mockResolvedValue(false);
+    await expect(
+      service.resetPassword({
+        token: 'a'.repeat(64),
+        password: 'NewSecurePass1!',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(hash).not.toHaveBeenCalled();
+    expect(users.resetPasswordWithToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects a token that expires or is consumed after the initial check', async () => {
     users.resetPasswordWithToken.mockResolvedValue(false);
     await expect(
       service.resetPassword({

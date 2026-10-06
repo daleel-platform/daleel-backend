@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class PasswordResetDeliveryService {
-  private logger = new Logger(PasswordResetDeliveryService.name);
+  private readonly logger = new Logger(PasswordResetDeliveryService.name);
 
-  constructor(private config: ConfigService) {}
+  constructor(private readonly config: ConfigService) {}
 
   async send(email: string, token: string): Promise<void> {
     const url = new URL(

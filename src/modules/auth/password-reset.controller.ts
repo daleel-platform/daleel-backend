@@ -10,7 +10,7 @@ import { PasswordResetService } from './password-reset.service.js';
 @Controller('auth')
 @Serialize(PasswordResetResponseDto)
 export class PasswordResetController {
-  constructor(private passwordReset: PasswordResetService) {}
+  constructor(private readonly passwordReset: PasswordResetService) {}
 
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)

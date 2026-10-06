@@ -11,6 +11,7 @@ describe('UsersService', () => {
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
     };
   };
 
@@ -34,6 +35,7 @@ describe('UsersService', () => {
         findUnique: vi.fn(),
         create: vi.fn(),
         update: vi.fn(),
+        updateMany: vi.fn(),
       },
     };
 
@@ -187,5 +189,55 @@ describe('UsersService', () => {
 
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
+  });
+
+  it('stores the reset hash and expiration through the User module', async () => {
+    const expiresAt = new Date();
+    await service.setPasswordResetToken(mockUser.id, 'token-hash', expiresAt);
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: mockUser.id },
+      data: {
+        passwordResetTokenHash: 'token-hash',
+        passwordResetExpiresAt: expiresAt,
+      },
+    });
+  });
+
+  it('checks token expiry without loading password data', async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: mockUser.id });
+    expect(await service.hasValidPasswordResetToken('token-hash')).toBe(true);
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: {
+        passwordResetTokenHash: 'token-hash',
+        passwordResetExpiresAt: { gt: expect.any(Date) },
+      },
+      select: { id: true },
+    });
+    prisma.user.findUnique.mockResolvedValue(null);
+    expect(await service.hasValidPasswordResetToken('invalid-token')).toBe(
+      false,
+    );
+  });
+
+  it('atomically consumes only an unexpired token and updates the password', async () => {
+    prisma.user.updateMany.mockResolvedValue({ count: 1 });
+    expect(
+      await service.resetPasswordWithToken('token-hash', 'new-password-hash'),
+    ).toBe(true);
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: {
+        passwordResetTokenHash: 'token-hash',
+        passwordResetExpiresAt: { gt: expect.any(Date) },
+      },
+      data: {
+        passwordHash: 'new-password-hash',
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+      },
+    });
+    prisma.user.updateMany.mockResolvedValue({ count: 0 });
+    expect(
+      await service.resetPasswordWithToken('used-token', 'new-password-hash'),
+    ).toBe(false);
   });
 });

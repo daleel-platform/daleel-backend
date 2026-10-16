@@ -12,6 +12,7 @@ model User {
   passwordHash String         @map("password_hash")
   name         String
   avatarUrl    String?        @map("avatar_url")
+  avatarPublicId String? @map("avatar_public_id")
   bio          String?
   interests    String[]       @default([])
   createdAt    DateTime       @default(now()) @map("created_at")

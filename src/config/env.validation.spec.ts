@@ -9,6 +9,28 @@ const validConfig = {
 };
 
 describe('environment validation', () => {
+  it('allows disabled storage but rejects partial credentials and invalid limits', () => {
+    expect(validate(validConfig).CLOUDINARY_CLOUD_NAME).toBeUndefined();
+    expect(() =>
+      validate({ ...validConfig, CLOUDINARY_CLOUD_NAME: 'demo' }),
+    ).toThrow();
+    expect(
+      validate({
+        ...validConfig,
+        CLOUDINARY_CLOUD_NAME: 'demo',
+        CLOUDINARY_API_KEY: 'test-key',
+        CLOUDINARY_API_SECRET: 'test-only-secret',
+      }).CLOUDINARY_CLOUD_NAME,
+    ).toBe('demo');
+    expect(() =>
+      validate({ ...validConfig, STORAGE_IMAGE_MAX_BYTES: 0 }),
+    ).toThrow();
+    try {
+      validate({ ...validConfig, CLOUDINARY_API_SECRET: 'test-only-secret' });
+    } catch (error) {
+      expect(String(error)).not.toContain('test-only-secret');
+    }
+  });
   it('uses default token lifetimes and bcrypt cost', () => {
     const config = validate(validConfig);
 

@@ -1,6 +1,8 @@
 import { plainToInstance } from 'class-transformer';
 import {
   IsEnum,
+  ValidateIf,
+  IsNotEmpty,
   IsInt,
   IsNumber,
   IsOptional,
@@ -19,6 +21,49 @@ export enum Environment {
 }
 
 export class EnvironmentVariables {
+  @ValidateIf((env: EnvironmentVariables) =>
+    [
+      env.CLOUDINARY_CLOUD_NAME,
+      env.CLOUDINARY_API_KEY,
+      env.CLOUDINARY_API_SECRET,
+    ].some((value) => value !== undefined),
+  )
+  @IsString()
+  @IsNotEmpty()
+  CLOUDINARY_CLOUD_NAME: string;
+
+  @ValidateIf((env: EnvironmentVariables) =>
+    [
+      env.CLOUDINARY_CLOUD_NAME,
+      env.CLOUDINARY_API_KEY,
+      env.CLOUDINARY_API_SECRET,
+    ].some((value) => value !== undefined),
+  )
+  @IsString()
+  @IsNotEmpty()
+  CLOUDINARY_API_KEY: string;
+
+  @ValidateIf((env: EnvironmentVariables) =>
+    [
+      env.CLOUDINARY_CLOUD_NAME,
+      env.CLOUDINARY_API_KEY,
+      env.CLOUDINARY_API_SECRET,
+    ].some((value) => value !== undefined),
+  )
+  @IsString()
+  @IsNotEmpty()
+  CLOUDINARY_API_SECRET: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(52428800)
+  STORAGE_IMAGE_MAX_BYTES: number = 5242880;
+
+  @IsInt()
+  @Min(1)
+  @Max(52428800)
+  STORAGE_DOCUMENT_MAX_BYTES: number = 15728640;
+
   @IsEnum(Environment)
   @IsOptional()
   NODE_ENV: Environment = Environment.Development;
@@ -70,6 +115,7 @@ export function validate(config: Record<string, unknown>) {
   });
   const errors = validateSync(validatedConfig, {
     skipMissingProperties: false,
+    validationError: { target: false, value: false },
   });
 
   if (errors.length > 0) {

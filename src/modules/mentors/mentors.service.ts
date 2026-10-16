@@ -1,0 +1,156 @@
+import { ProfilePictureService } from '../profile-picture/profile-picture.service.js';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service.js';
+import { UsersService } from '../users/users.service.js';
+import { PaginationMetaDto } from '../../common/pagination/pagination-meta.dto.js';
+import { CreateMentorDto } from './dto/create-mentor.dto.js';
+import { UpdateMentorDto } from './dto/update-mentor.dto.js';
+import { MentorQueryDto } from './dto/mentor-query.dto.js';
+import {
+  MentorResponseDto,
+  PaginatedMentorResponseDto,
+} from './dto/mentor-response.dto.js';
+
+const PUBLIC_USER = {
+  user: { select: { name: true, avatarUrl: true, bio: true } },
+} as const;
+
+@Injectable()
+export class MentorsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly users: UsersService,
+    private readonly pictures: ProfilePictureService,
+  ) {}
+
+  async create(
+    userId: string,
+    dto: CreateMentorDto,
+    file?: Express.Multer.File,
+  ): Promise<MentorResponseDto> {
+    await this.users.findById(userId);
+    try {
+      const data = {
+        userId,
+        headline: dto.headline,
+        about: dto.about,
+        skills: dto.skills,
+        yearsOfExperience: dto.yearsOfExperience,
+        linkedinUrl: dto.linkedinUrl,
+      };
+      if (file) {
+        const existing = await this.prisma.mentorProfile.findUnique({
+          where: { userId },
+          select: { id: true },
+        });
+        if (existing)
+          throw new ConflictException('You already have a mentor profile');
+        return await this.pictures.replaceWith(userId, file, (tx) =>
+          tx.mentorProfile.create({ data, include: PUBLIC_USER }),
+        );
+      }
+      return await this.prisma.mentorProfile.create({
+        data,
+        include: PUBLIC_USER,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('You already have a mentor profile');
+      }
+      throw error;
+    }
+  }
+
+  async update(
+    userId: string,
+    dto: UpdateMentorDto,
+  ): Promise<MentorResponseDto> {
+    return this.updateOwn(userId, dto);
+  }
+
+  async setStatus(
+    userId: string,
+    isActive: boolean,
+  ): Promise<MentorResponseDto> {
+    return this.updateOwn(userId, { isActive });
+  }
+
+  private async updateOwn(
+    userId: string,
+    data: Prisma.MentorProfileUpdateInput,
+  ): Promise<MentorResponseDto> {
+    try {
+      return await this.prisma.mentorProfile.update({
+        where: { userId },
+        data,
+        include: PUBLIC_USER,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('Mentor profile not found');
+      }
+      throw error;
+    }
+  }
+
+  async findOne(id: string): Promise<MentorResponseDto> {
+    const mentor = await this.prisma.mentorProfile.findUnique({
+      where: { id, isActive: true },
+      include: PUBLIC_USER,
+    });
+    if (!mentor) throw new NotFoundException('Mentor profile not found');
+    return mentor;
+  }
+
+  async findAll(query: MentorQueryDto): Promise<PaginatedMentorResponseDto> {
+    const skip = (query.page - 1) * query.limit;
+    if (!Number.isSafeInteger(skip))
+      throw new BadRequestException('Page offset is too large');
+    const where: Prisma.MentorProfileWhereInput = {
+      isActive: true,
+      ...(query.skills?.length ? { skills: { hasSome: query.skills } } : {}),
+      ...(query.minExperience !== undefined
+        ? { yearsOfExperience: { gte: query.minExperience } }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { headline: { contains: query.search, mode: 'insensitive' } },
+              {
+                user: { name: { contains: query.search, mode: 'insensitive' } },
+              },
+            ],
+          }
+        : {}),
+    };
+    const [items, totalItems] = await this.prisma.$transaction(
+      [
+        this.prisma.mentorProfile.findMany({
+          where,
+          include: PUBLIC_USER,
+          skip,
+          take: query.limit,
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        }),
+        this.prisma.mentorProfile.count({ where }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    return {
+      items,
+      meta: PaginationMetaDto.create(totalItems, items.length, query),
+    };
+  }
+}

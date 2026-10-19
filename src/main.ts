@@ -23,7 +23,10 @@ async function bootstrap() {
   app.use(compression());
 
   // CORS
-  app.enableCors();
+  app.enableCors({
+    origin: true,
+    credentials: true,
+  });
 
   // Global prefix & URI versioning (/api/v1/...)
   app.setGlobalPrefix('api');

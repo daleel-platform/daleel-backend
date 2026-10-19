@@ -20,7 +20,10 @@ model User {
   passwordResetTokenHash String? @unique @map("password_reset_token_hash")
   passwordResetExpiresAt DateTime? @map("password_reset_expires_at")
 
-  mentorProfile MentorProfile?
+  mentorProfile          MentorProfile?
+  conversationsInitiated Conversation[] @relation("UserConversation1")
+  conversationsReceived  Conversation[] @relation("UserConversation2")
+  messagesSent           Message[]      @relation("SentMessages")
 
   @@map("users")
 }
@@ -40,4 +43,42 @@ model MentorProfile {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("mentor_profiles")
+}
+
+model Conversation {
+  id             String    @id @default(uuid())
+  participant1Id String    @map("participant_1_id")
+  participant2Id String    @map("participant_2_id")
+  lastMessageAt  DateTime? @map("last_message_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  participant1 User      @relation("UserConversation1", fields: [participant1Id], references: [id], onDelete: Cascade)
+  participant2 User      @relation("UserConversation2", fields: [participant2Id], references: [id], onDelete: Cascade)
+  messages     Message[]
+
+  @@unique([participant1Id, participant2Id])
+  @@index([participant1Id])
+  @@index([participant2Id])
+  @@map("conversations")
+}
+
+model Message {
+  id             String    @id @default(uuid())
+  conversationId String    @map("conversation_id")
+  senderId       String    @map("sender_id")
+  content        String
+  replyToId      String?   @map("reply_to_id")
+  isEdited       Boolean   @default(false) @map("is_edited")
+  deletedAt      DateTime? @map("deleted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  replyTo      Message?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      Message[]    @relation("MessageReplies")
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
 }

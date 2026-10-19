@@ -107,6 +107,10 @@ export class EnvironmentVariables {
   @Min(4)
   @Max(31)
   BCRYPT_SALT_ROUNDS: number = 12;
+
+  @IsString()
+  @IsOptional()
+  CORS_ORIGIN?: string;
 }
 
 export function validate(config: Record<string, unknown>) {

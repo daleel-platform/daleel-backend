@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter.js';
 import { ResponseInterceptor } from '../src/common/interceptors/response.interceptor.js';
-import { DELETED_MESSAGE_PLACEHOLDER } from '../src/modules/messaging/messaging.service.js';
+import { DELETED_MESSAGE_PLACEHOLDER } from '../src/modules/messaging/messaging.constants.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 describe('Messaging (e2e)', () => {

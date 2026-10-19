@@ -17,6 +17,7 @@ import {
   WsException,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { ConversationsService } from './conversations.service.js';
 import { DeleteMessageDto } from './dto/delete-message.dto.js';
 import { EditMessageDto } from './dto/edit-message.dto.js';
 import { JoinConversationDto } from './dto/join-conversation.dto.js';
@@ -26,11 +27,17 @@ import { SendMessageDto } from './dto/send-message.dto.js';
 import { WsAllExceptionsFilter } from './filters/ws-all-exceptions.filter.js';
 import { WsJwtGuard } from './guards/ws-jwt.guard.js';
 import type { AuthenticatedSocket } from './guards/ws-jwt.guard.js';
-import { MessagingService } from './messaging.service.js';
+import { MessagesService } from './messages.service.js';
+
+const corsOriginEnv = process.env.CORS_ORIGIN;
+const gatewayCorsOrigin = corsOriginEnv
+  ? corsOriginEnv.split(',').map((o) => o.trim())
+  : true;
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: gatewayCorsOrigin,
+    credentials: true,
   },
 })
 @UseGuards(WsJwtGuard)
@@ -49,7 +56,8 @@ export class MessagingGateway
   server!: Server;
 
   constructor(
-    private readonly messagingService: MessagingService,
+    private readonly conversationsService: ConversationsService,
+    private readonly messagesService: MessagesService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
@@ -61,7 +69,11 @@ export class MessagingGateway
     try {
       const token = this.extractHandshakeToken(client);
       if (!token) {
-        client.emit('error', { message: 'Unauthorized: Missing token' });
+        client.emit('error', {
+          status: 'error',
+          statusCode: 401,
+          message: 'Unauthorized: Missing token',
+        });
         client.disconnect(true);
         return;
       }
@@ -78,6 +90,8 @@ export class MessagingGateway
         payload.sub.length === 0
       ) {
         client.emit('error', {
+          status: 'error',
+          statusCode: 401,
           message: 'Unauthorized: Invalid token payload',
         });
         client.disconnect(true);
@@ -87,6 +101,8 @@ export class MessagingGateway
       client.data = { ...client.data, user: { id: payload.sub } };
     } catch {
       client.emit('error', {
+        status: 'error',
+        statusCode: 401,
         message: 'Unauthorized: Invalid or expired token',
       });
       client.disconnect(true);
@@ -106,7 +122,10 @@ export class MessagingGateway
     @MessageBody() dto: JoinConversationDto,
   ): Promise<{ success: boolean; conversationId: string }> {
     const userId = this.getSocketUserId(client);
-    await this.messagingService.validateParticipant(dto.conversationId, userId);
+    await this.conversationsService.validateParticipant(
+      dto.conversationId,
+      userId,
+    );
 
     await client.join(`conversation:${dto.conversationId}`);
     return { success: true, conversationId: dto.conversationId };
@@ -133,7 +152,7 @@ export class MessagingGateway
     @MessageBody() dto: SendMessageDto,
   ): Promise<MessageResponseDto> {
     const userId = this.getSocketUserId(client);
-    const message = await this.messagingService.createMessage(userId, dto);
+    const message = await this.messagesService.createMessage(userId, dto);
 
     this.server
       .to(`conversation:${dto.conversationId}`)
@@ -143,25 +162,14 @@ export class MessagingGateway
   }
 
   /**
-   * Explicit reply event; delegates to message creation with replyToId.
+   * Explicit reply event; validates reply payload and delegates to sendMessage.
    */
   @SubscribeMessage('replyMessage')
   async handleReplyMessage(
     @ConnectedSocket() client: AuthenticatedSocket,
     @MessageBody() dto: ReplyMessageDto,
   ): Promise<MessageResponseDto> {
-    const userId = this.getSocketUserId(client);
-    const message = await this.messagingService.createMessage(userId, {
-      conversationId: dto.conversationId,
-      content: dto.content,
-      replyToId: dto.replyToId,
-    });
-
-    this.server
-      .to(`conversation:${dto.conversationId}`)
-      .emit('messageCreated', message);
-
-    return message;
+    return this.handleSendMessage(client, dto);
   }
 
   /**
@@ -173,7 +181,7 @@ export class MessagingGateway
     @MessageBody() dto: EditMessageDto,
   ): Promise<MessageResponseDto> {
     const userId = this.getSocketUserId(client);
-    const updated = await this.messagingService.editMessage(userId, dto);
+    const updated = await this.messagesService.editMessage(userId, dto);
 
     this.server
       .to(`conversation:${updated.conversationId}`)
@@ -191,7 +199,7 @@ export class MessagingGateway
     @MessageBody() dto: DeleteMessageDto,
   ): Promise<MessageResponseDto> {
     const userId = this.getSocketUserId(client);
-    const deleted = await this.messagingService.deleteMessage(userId, dto);
+    const deleted = await this.messagesService.deleteMessage(userId, dto);
 
     this.server
       .to(`conversation:${deleted.conversationId}`)

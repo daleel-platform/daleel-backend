@@ -17,18 +17,22 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { CurrentUser, Serialize } from '../../common/index.js';
+import { ConversationsService } from './conversations.service.js';
 import { ConversationResponseDto } from './dto/conversation-response.dto.js';
 import { CreateConversationDto } from './dto/create-conversation.dto.js';
 import { MessageQueryDto } from './dto/message-query.dto.js';
 import { PaginatedMessagesResponseDto } from './dto/paginated-messages-response.dto.js';
-import { MessagingService } from './messaging.service.js';
+import { MessagesService } from './messages.service.js';
 
 @ApiTags('Conversations')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('conversations')
 export class MessagingController {
-  constructor(private readonly messagingService: MessagingService) {}
+  constructor(
+    private readonly conversationsService: ConversationsService,
+    private readonly messagesService: MessagesService,
+  ) {}
 
   @Post()
   @Serialize(ConversationResponseDto)
@@ -48,7 +52,7 @@ export class MessagingController {
     @CurrentUser() userId: string,
     @Body() dto: CreateConversationDto,
   ): Promise<ConversationResponseDto> {
-    return this.messagingService.getOrCreateConversation(
+    return this.conversationsService.getOrCreateConversation(
       userId,
       dto.recipientId,
     );
@@ -68,7 +72,7 @@ export class MessagingController {
   async getConversations(
     @CurrentUser() userId: string,
   ): Promise<ConversationResponseDto[]> {
-    return this.messagingService.getUserConversations(userId);
+    return this.conversationsService.getUserConversations(userId);
   }
 
   @Get(':id/messages')
@@ -93,6 +97,6 @@ export class MessagingController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Query() query: MessageQueryDto,
   ): Promise<PaginatedMessagesResponseDto> {
-    return this.messagingService.getConversationMessages(userId, id, query);
+    return this.messagesService.getConversationMessages(userId, id, query);
   }
 }

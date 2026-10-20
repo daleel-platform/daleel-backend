@@ -73,6 +73,8 @@ describe('mentor profile validation', () => {
   it('rejects missing, empty and blank skills and nonpositive or fractional experience', () => {
     for (const fields of [
       { skills: undefined },
+      { skills: 'NestJS,TypeScript' },
+      { skills: '["NestJS"]' },
       { skills: [] },
       { skills: ['  '] },
       { yearsOfExperience: 0 },

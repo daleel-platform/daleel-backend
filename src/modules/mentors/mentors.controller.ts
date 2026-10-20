@@ -1,4 +1,3 @@
-import { FileInterceptor } from '@nestjs/platform-express';
 import {
   Body,
   Controller,
@@ -9,13 +8,9 @@ import {
   Post,
   Query,
   UseGuards,
-  UseInterceptors,
-  UploadedFile,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -38,40 +33,6 @@ export class MentorsController {
   constructor(private readonly mentors: MentorsService) {}
 
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['headline', 'about', 'skills', 'yearsOfExperience'],
-      properties: {
-        headline: { type: 'string' },
-        about: { type: 'string' },
-        skills: {
-          type: 'string',
-          description: 'Comma-separated skills or JSON array',
-          example: 'NestJS,TypeScript',
-        },
-        yearsOfExperience: {
-          type: 'integer',
-          minimum: 1,
-          maximum: 60,
-          example: 3,
-        },
-        linkedinUrl: {
-          type: 'string',
-          example: 'https://www.linkedin.com/in/example',
-        },
-        file: {
-          type: 'string',
-          format: 'binary',
-          description: 'Optional JPEG, PNG or WebP profile photo',
-        },
-      },
-    },
-  })
-  @ApiResponse({ status: 413, description: 'Image exceeds size limit' })
-  @ApiResponse({ status: 503, description: 'Storage is not configured' })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Serialize(MentorResponseDto)
@@ -84,9 +45,8 @@ export class MentorsController {
   create(
     @CurrentUser() userId: string,
     @Body() dto: CreateMentorDto,
-    @UploadedFile() file?: Express.Multer.File,
   ): Promise<MentorResponseDto> {
-    return this.mentors.create(userId, dto, file);
+    return this.mentors.create(userId, dto);
   }
 
   @Patch('me')

@@ -1,4 +1,3 @@
-import { ProfilePictureModule } from '../profile-picture/profile-picture.module.js';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaModule } from '../../prisma/prisma.module.js';
@@ -8,12 +7,7 @@ import { MentorsController } from './mentors.controller.js';
 import { MentorsService } from './mentors.service.js';
 
 @Module({
-  imports: [
-    ProfilePictureModule,
-    PrismaModule,
-    UsersModule,
-    JwtModule.register({}),
-  ],
+  imports: [PrismaModule, UsersModule, JwtModule.register({})],
   controllers: [MentorsController],
   providers: [MentorsService, JwtAuthGuard],
   exports: [MentorsService],

@@ -1,3 +1,4 @@
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { vi } from 'vitest';
 import { StorageService } from '../src/modules/storage/storage.service.js';
 import {
@@ -94,6 +95,9 @@ describe('Mentors (PostgreSQL e2e)', () => {
       {},
       { ...dto, headline: ' ' },
       { ...dto, skills: [42] },
+      { ...dto, skills: 'NestJS,TypeScript' },
+      { ...dto, skills: '["NestJS"]' },
+      { ...dto, yearsOfExperience: 61 },
       { ...dto, skills: [' '] },
       { ...dto, yearsOfExperience: -1 },
       { ...dto, yearsOfExperience: 1.5 },
@@ -273,21 +277,22 @@ describe('Mentors (PostgreSQL e2e)', () => {
       .expect(404);
   });
   it('uploads for authenticated users including non-mentors and saves only their avatar', async () => {
-    const path = '/api/v1/users/me/avatar';
+    const path = '/api/v1/users/me';
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF1sAAAAASUVORK5CYII=',
       'base64',
     );
     await request(app.getHttpServer())
-      .post(path)
+      .patch(path)
       .attach('file', png, 'avatar.png')
       .expect(401);
     await request(app.getHttpServer())
-      .post(path)
+      .patch(path)
       .auth(tokens[0], { type: 'bearer' })
-      .expect(400);
+      .send({ bio: 'Updated without a photo' })
+      .expect(200);
     await request(app.getHttpServer())
-      .post(path)
+      .patch(path)
       .auth(tokens[0], { type: 'bearer' })
       .attach('file', Buffer.from('%PDF-1.4'), {
         filename: 'test.pdf',
@@ -299,7 +304,7 @@ describe('Mentors (PostgreSQL e2e)', () => {
       url: 'https://res.cloudinary.com/demo/image/upload/avatar.png',
     });
     const result = await request(app.getHttpServer())
-      .post(path)
+      .patch(path)
       .auth(tokens[0], { type: 'bearer' })
       .attach('file', png, 'avatar.png')
       .expect(200);
@@ -310,17 +315,26 @@ describe('Mentors (PostgreSQL e2e)', () => {
     const owner = await prisma.user.findUniqueOrThrow({
       where: { id: ids[0] },
     });
-    expect(owner.avatarPublicId).toBe('daleel/avatars/test-' + marker);
+    expect(owner.avatarUrl).toBe(result.body.data.avatarUrl);
+    expect(storage.uploadFile).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        publicId: ids[0],
+        overwrite: true,
+        type: 'upload',
+      }),
+    );
     const other = await prisma.user.findUniqueOrThrow({
       where: { id: ids[1] },
     });
     expect(other.avatarUrl).toBeNull();
     const nonMentor = await request(app.getHttpServer())
-      .post(path)
+      .patch(path)
       .auth(tokens[2], { type: 'bearer' })
       .attach('file', png, 'avatar.png')
       .expect(200);
-    expect(Object.keys(nonMentor.body.data)).toEqual(['avatarUrl']);
+    expect(nonMentor.body.data.id).toBe(ids[2]);
+    expect(nonMentor.body.data.passwordHash).toBeUndefined();
     expect(
       await prisma.mentorProfile.count({ where: { userId: ids[2] } }),
     ).toBe(0);
@@ -328,56 +342,72 @@ describe('Mentors (PostgreSQL e2e)', () => {
       where: { id: ids[0] },
     });
     expect(unchangedOwner.avatarUrl).toBe(owner.avatarUrl);
-  });
-  it('creates the profile and photo together and rolls back a concurrent avatar conflict', async () => {
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF1sAAAAASUVORK5CYII=',
-      'base64',
-    );
-    const submit = () =>
-      request(app.getHttpServer())
-        .post(base)
-        .auth(tokens[2], { type: 'bearer' })
-        .field('headline', 'Mentor with photo')
-        .field('about', 'Teaching backend development')
-        .field('skills', 'NestJS,TypeScript')
-        .field('yearsOfExperience', '2')
-        .attach('file', png, 'avatar.png');
-    storage.uploadFile.mockRejectedValueOnce(new Error('Upload failed'));
-    await submit().expect(500);
-    expect(
-      await prisma.mentorProfile.count({ where: { userId: ids[2] } }),
-    ).toBe(0);
-    storage.uploadFile.mockImplementationOnce(async () => {
-      await prisma.user.update({
-        where: { id: ids[2] },
-        data: { avatarUrl: 'https://example.com/concurrent.png' },
-      });
-      return {
-        publicId: 'daleel/avatars/loser',
-        url: 'https://example.com/loser.png',
-      };
+    await request(app.getHttpServer())
+      .patch(path)
+      .auth(tokens[2], { type: 'bearer' })
+      .field('name', 'Updated user')
+      .field('interests', 'NestJS')
+      .attach('file', png, 'avatar.png')
+      .expect(200);
+    const updated = await prisma.user.findUniqueOrThrow({
+      where: { id: ids[2] },
     });
-    await submit().expect(409);
-    expect(
-      await prisma.mentorProfile.count({ where: { userId: ids[2] } }),
-    ).toBe(0);
-    expect(storage.deleteFile).toHaveBeenCalledWith(
-      'daleel/avatars/loser',
-      expect.any(Object),
-    );
-    storage.uploadFile.mockResolvedValue({
-      publicId: 'daleel/avatars/created',
-      url: 'https://example.com/created.png',
-    });
-    const response = await submit().expect(201);
-    expect(response.body.data.skills).toEqual(['NestJS', 'TypeScript']);
-    expect(response.body.data.yearsOfExperience).toBe(2);
-    expect(response.body.data.user.avatarUrl).toBe(
-      'https://example.com/created.png',
-    );
+    expect(updated.name).toBe('Updated user');
+    expect(updated.interests).toEqual(['NestJS']);
+    await request(app.getHttpServer())
+      .patch(path)
+      .auth(tokens[2], { type: 'bearer' })
+      .field('id', ids[0])
+      .attach('file', png, 'avatar.png')
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(path)
+      .auth(tokens[2], { type: 'bearer' })
+      .attach('file', Buffer.alloc(5242881), 'large.png')
+      .expect(413);
     const calls = storage.uploadFile.mock.calls.length;
-    await submit().expect(409);
+    await request(app.getHttpServer())
+      .post(base)
+      .auth(tokens[2], { type: 'bearer' })
+      .field('headline', 'Mentor')
+      .field('about', 'About')
+      .field('skills', 'NestJS')
+      .field('yearsOfExperience', '2')
+      .attach('file', png, 'avatar.png')
+      .expect(400);
     expect(storage.uploadFile).toHaveBeenCalledTimes(calls);
+    await request(app.getHttpServer())
+      .post(base)
+      .auth(tokens[2], { type: 'bearer' })
+      .send(dto)
+      .expect(201);
+  });
+  it('documents JSON mentor onboarding and profile uploads only on the authenticated user route', async () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().addBearerAuth().build(),
+    );
+    const creation = document.paths[base].post!;
+    expect(creation.requestBody).toHaveProperty('content.application/json');
+    expect(creation.requestBody).not.toHaveProperty(
+      'content.multipart/form-data',
+    );
+    const update = document.paths['/api/v1/users/me'].patch!;
+    expect(update.requestBody).toHaveProperty('content.multipart/form-data');
+    expect(update.security).toEqual([{ bearer: [] }]);
+    expect(document.paths['/api/v1/users/me/avatar']).toBeUndefined();
+    expect(document.paths['/api/v1/users/{id}'].patch).toBeUndefined();
+    await request(app.getHttpServer())
+      .patch('/api/v1/users/me')
+      .auth('invalid', { type: 'bearer' })
+      .send({ name: 'No' })
+      .expect(401);
+    await request(app.getHttpServer())
+      .patch('/api/v1/users/' + ids[0])
+      .send({ name: 'No' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post('/api/v1/users/me/avatar')
+      .expect(404);
   });
 });

@@ -1,4 +1,3 @@
-import { ProfilePictureModule } from './modules/profile-picture/profile-picture.module.js';
 import { MentorsModule } from './modules/mentors/mentors.module.js';
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
@@ -30,7 +29,6 @@ import { PrismaModule } from './prisma/prisma.module.js';
     UsersModule,
     AuthModule,
     MentorsModule,
-    ProfilePictureModule,
   ],
   controllers: [AppController],
   providers: [AppService],

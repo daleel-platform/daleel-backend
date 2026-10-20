@@ -104,6 +104,52 @@ describe('StorageService', () => {
       expect.any(Function),
     );
   });
+  it('overwrites only an explicit asset ID and invalidates cached copies', async () => {
+    upload.mockImplementation((_options, callback) => {
+      queueMicrotask(() =>
+        callback(null, {
+          public_id: 'daleel/avatars/user-id',
+          secure_url: 'https://example.com/avatar',
+          bytes: png.length,
+          format: 'png',
+        }),
+      );
+      return new PassThrough();
+    });
+    await service.uploadFile(png, {
+      folder: 'daleel/avatars',
+      publicId: 'user-id',
+      overwrite: true,
+      type: 'upload',
+    });
+    expect(upload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        public_id: 'user-id',
+        folder: 'daleel/avatars',
+        overwrite: true,
+        invalidate: true,
+        type: 'upload',
+      }),
+      expect.any(Function),
+    );
+    upload.mockClear();
+    for (const options of [
+      { folder: 'daleel/avatars', overwrite: true },
+      { folder: 'daleel/avatars', publicId: '../other' },
+    ]) {
+      await expect(service.uploadFile(png, options)).rejects.toMatchObject({
+        status: 400,
+      });
+    }
+    expect(upload).not.toHaveBeenCalled();
+  });
+  it('rejects deletion without an explicit delivery type before contacting Cloudinary', async () => {
+    // @ts-expect-error Callers must now provide the delivery type.
+    await expect(service.deleteFile('daleel/avatars/id')).rejects.toMatchObject(
+      { status: 400 },
+    );
+    expect(destroy).not.toHaveBeenCalled();
+  });
   it('rejects unsupported, oversized, spoofed files and unsafe paths before uploading', async () => {
     for (const file of [
       Buffer.alloc(0),
@@ -194,9 +240,9 @@ describe('StorageService', () => {
       expect.objectContaining({ type: 'upload', invalidate: true }),
     );
     destroy.mockRejectedValue(new Error('provider detail'));
-    await expect(service.deleteFile('daleel/avatars/id')).rejects.toThrow(
-      'Media deletion failed',
-    );
+    await expect(
+      service.deleteFile('daleel/avatars/id', { type: 'authenticated' }),
+    ).rejects.toThrow('Media deletion failed');
   });
   it('returns 503 without configuration', async () => {
     await expect(

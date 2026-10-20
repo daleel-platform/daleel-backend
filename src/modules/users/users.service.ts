@@ -1,3 +1,4 @@
+import { StorageService } from '../storage/storage.service.js';
 import {
   ConflictException,
   Injectable,
@@ -14,7 +15,10 @@ export type UserWithMentorProfile = Prisma.UserGetPayload<{
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   /**
    * Creates a new user. Called by the Auth module during registration or by seed scripts.
@@ -78,15 +82,33 @@ export class UsersService {
   /**
    * Updates profile fields for an existing user.
    */
-  async update(id: string, dto: UpdateUserDto): Promise<UserWithMentorProfile> {
+  async update(
+    id: string,
+    dto: UpdateUserDto,
+    file?: Express.Multer.File,
+  ): Promise<UserWithMentorProfile> {
     // Ensures user exists before updating, throwing NotFoundException if not found
     await this.findById(id);
 
+    const avatarUrl = file
+      ? (
+          await this.storage.uploadFile(file, {
+            folder: 'daleel/avatars',
+            publicId: id,
+            type: 'upload',
+            resourceType: 'image',
+            overwrite: true,
+            transformation: { width: 512, height: 512, crop: 'limit' },
+          })
+        ).url
+      : dto.avatarUrl;
+    // Cloudinary overwrite cannot be rolled back with PostgreSQL. Do not delete
+    // the shared asset on DB failure; retrying replaces the same identifier.
     return this.prisma.user.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name.trim() }),
-        ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+        ...(avatarUrl !== undefined && { avatarUrl }),
         ...(dto.bio !== undefined && { bio: dto.bio }),
         ...(dto.interests !== undefined && { interests: dto.interests }),
       },

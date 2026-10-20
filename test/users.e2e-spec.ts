@@ -137,10 +137,11 @@ describe('UsersController (e2e)', () => {
     });
   });
 
-  describe('PATCH /api/v1/users/:id', () => {
+  describe('PATCH /api/v1/users/me', () => {
     it('should update user profile successfully', async () => {
       const response = await request(app.getHttpServer())
-        .patch(`/api/v1/users/${testUserId}`)
+        .patch('/api/v1/users/me')
+        .auth(accessToken, { type: 'bearer' })
         .send({
           name: 'Updated Name',
           bio: 'Updated Bio',
@@ -157,7 +158,8 @@ describe('UsersController (e2e)', () => {
 
     it('should reject unwhitelisted fields like passwordHash or email with 400', async () => {
       const response = await request(app.getHttpServer())
-        .patch(`/api/v1/users/${testUserId}`)
+        .patch('/api/v1/users/me')
+        .auth(accessToken, { type: 'bearer' })
         .send({
           passwordHash: 'hacked-password',
         })

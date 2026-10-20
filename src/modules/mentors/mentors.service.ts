@@ -1,4 +1,3 @@
-import { ProfilePictureService } from '../profile-picture/profile-picture.service.js';
 import {
   BadRequestException,
   ConflictException,
@@ -26,13 +25,11 @@ export class MentorsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly users: UsersService,
-    private readonly pictures: ProfilePictureService,
   ) {}
 
   async create(
     userId: string,
     dto: CreateMentorDto,
-    file?: Express.Multer.File,
   ): Promise<MentorResponseDto> {
     await this.users.findById(userId);
     try {
@@ -44,17 +41,6 @@ export class MentorsService {
         yearsOfExperience: dto.yearsOfExperience,
         linkedinUrl: dto.linkedinUrl,
       };
-      if (file) {
-        const existing = await this.prisma.mentorProfile.findUnique({
-          where: { userId },
-          select: { id: true },
-        });
-        if (existing)
-          throw new ConflictException('You already have a mentor profile');
-        return await this.pictures.replaceWith(userId, file, (tx) =>
-          tx.mentorProfile.create({ data, include: PUBLIC_USER }),
-        );
-      }
       return await this.prisma.mentorProfile.create({
         data,
         include: PUBLIC_USER,

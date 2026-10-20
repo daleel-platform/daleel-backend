@@ -1,4 +1,3 @@
-import { ProfilePictureService } from '../profile-picture/profile-picture.service.js';
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,7 +30,6 @@ describe('MentorsService', () => {
         MentorsService,
         { provide: PrismaService, useValue: prisma },
         { provide: UsersService, useValue: users },
-        { provide: ProfilePictureService, useValue: { replaceWith: vi.fn() } },
       ],
     }).compile();
     service = module.get(MentorsService);

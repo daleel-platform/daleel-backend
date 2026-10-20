@@ -13,7 +13,7 @@ import {
 } from './cloudinary.provider.js';
 import { FileValidationService } from './file-validation.service.js';
 import type {
-  AssetOptions,
+  DeleteOptions,
   SignedUrlOptions,
   UploadOptions,
   UploadResult,
@@ -32,6 +32,15 @@ export class StorageService {
     options: UploadOptions,
   ): Promise<UploadResult> {
     this.validatePath(options.folder);
+    if (
+      options.publicId !== undefined &&
+      !/^[a-zA-Z0-9_-]+$/.test(options.publicId)
+    )
+      throw new BadRequestException('Invalid asset identifier');
+    if (options.overwrite && !options.publicId)
+      throw new BadRequestException(
+        'Overwrite requires an explicit asset identifier',
+      );
     const validated = await this.files.validate(file);
     if (options.resourceType && options.resourceType !== validated.resourceType)
       throw new BadRequestException(
@@ -41,7 +50,7 @@ export class StorageService {
     const type = options.type ?? 'authenticated';
     // Raw public IDs retain the extension; callers store the returned identifier.
     const publicId =
-      randomUUID() +
+      (options.publicId ?? randomUUID()) +
       (validated.resourceType === 'raw' ? '.' + validated.format : '');
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -58,7 +67,8 @@ export class StorageService {
             public_id: publicId,
             resource_type: validated.resourceType,
             type,
-            overwrite: false,
+            overwrite: options.overwrite ?? false,
+            invalidate: options.overwrite ?? false,
             transformation: options.transformation,
           },
           (error, result) => {
@@ -147,16 +157,15 @@ export class StorageService {
     }
   }
 
-  async deleteFile(
-    publicId: string,
-    options: AssetOptions = {},
-  ): Promise<void> {
+  async deleteFile(publicId: string, options: DeleteOptions): Promise<void> {
     this.validatePath(publicId);
+    if (!options || !['upload', 'authenticated'].includes(options.type))
+      throw new BadRequestException('Asset delivery type is required');
     const client = this.getClient();
     try {
       const result: unknown = await client.uploader.destroy(publicId, {
         resource_type: options.resourceType ?? 'image',
-        type: options.type ?? 'authenticated',
+        type: options.type,
         invalidate: true,
       });
       if (

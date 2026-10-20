@@ -34,25 +34,13 @@ export class CreateMentorDto {
     minItems: 1,
     example: ['NestJS', 'TypeScript'],
   })
-  @Transform(({ value }: { value: unknown }) => {
-    let skills: unknown = value;
-    if (typeof value === 'string') {
-      if (value.trim().startsWith('[')) {
-        try {
-          skills = JSON.parse(value);
-        } catch {
-          return value;
-        }
-      } else {
-        skills = value.split(',');
-      }
-    }
-    return Array.isArray(skills)
-      ? skills.map((skill: unknown) =>
+  @Transform(({ value }: { value: unknown }) =>
+    Array.isArray(value)
+      ? value.map((skill: unknown) =>
           typeof skill === 'string' ? skill.trim() : skill,
         )
-      : skills;
-  })
+      : value,
+  )
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })

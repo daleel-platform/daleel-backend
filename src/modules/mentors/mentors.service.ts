@@ -16,7 +16,7 @@ import {
   PaginatedMentorResponseDto,
 } from './dto/mentor-response.dto.js';
 
-const PUBLIC_USER = {
+export const PUBLIC_USER = {
   user: { select: { name: true, avatarUrl: true, bio: true } },
 } as const;
 

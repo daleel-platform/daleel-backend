@@ -63,6 +63,28 @@ describe('environment validation', () => {
       'Environment validation error',
     );
   });
+  it('defaults mentor matching settings and validates them', () => {
+    const config = validate(validConfig);
+    expect(config.HF_API_TOKEN).toBeUndefined();
+    expect(config.EMBEDDINGS_MODEL).toBe(
+      'sentence-transformers/all-MiniLM-L6-v2',
+    );
+    expect(config.EMBEDDINGS_TIMEOUT_MS).toBe(3000);
+    expect(config.RECOMMENDATIONS_CACHE_TTL).toBe(3600);
+    for (const invalid of [
+      { HF_API_TOKEN: '' },
+      { EMBEDDINGS_MODEL: 'no-owner' },
+      { EMBEDDINGS_MODEL: '../escape/x' },
+      { EMBEDDINGS_MODEL: '../x' },
+      { EMBEDDINGS_TIMEOUT_MS: '50' },
+      { RECOMMENDATIONS_CACHE_TTL: '0' },
+    ]) {
+      expect(() => validate({ ...validConfig, ...invalid })).toThrow(
+        'Environment validation error',
+      );
+    }
+  });
+
   it('allows an omitted reset URL and valid frontend URLs', () => {
     expect(validate(validConfig).PASSWORD_RESET_URL).toBeUndefined();
     for (const url of [

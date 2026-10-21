@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   Max,
   Min,
   MinLength,
@@ -111,6 +112,28 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   CORS_ORIGIN?: string;
+
+  // Semantic mentor matching is enabled only when a Hugging Face token is set.
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  HF_API_TOKEN?: string;
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/, {
+    message: 'EMBEDDINGS_MODEL must look like "owner/model-name"',
+  })
+  EMBEDDINGS_MODEL: string = 'sentence-transformers/all-MiniLM-L6-v2';
+
+  @IsInt()
+  @Min(100)
+  @Max(30000)
+  EMBEDDINGS_TIMEOUT_MS: number = 3000;
+
+  @IsInt()
+  @Min(60)
+  @Max(86400)
+  RECOMMENDATIONS_CACHE_TTL: number = 3600;
 }
 
 export function validate(config: Record<string, unknown>) {

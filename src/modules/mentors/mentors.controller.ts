@@ -18,6 +18,7 @@ import {
 import { CurrentUser, Serialize } from '../../common/index.js';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { MentorsService } from './mentors.service.js';
+import { MentorMatchingService } from './mentor-matching.service.js';
 import { CreateMentorDto } from './dto/create-mentor.dto.js';
 import { UpdateMentorDto } from './dto/update-mentor.dto.js';
 import { UpdateMentorStatusDto } from './dto/update-mentor-status.dto.js';
@@ -26,11 +27,16 @@ import {
   MentorResponseDto,
   PaginatedMentorResponseDto,
 } from './dto/mentor-response.dto.js';
+import { MentorRecommendationResponseDto } from './dto/mentor-recommendation-response.dto.js';
+import { RecommendationQueryDto } from './dto/recommendation-query.dto.js';
 
 @ApiTags('Mentors')
 @Controller('mentors')
 export class MentorsController {
-  constructor(private readonly mentors: MentorsService) {}
+  constructor(
+    private readonly mentors: MentorsService,
+    private readonly matching: MentorMatchingService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -79,6 +85,25 @@ export class MentorsController {
     @Body() dto: UpdateMentorStatusDto,
   ): Promise<MentorResponseDto> {
     return this.mentors.setStatus(userId, dto.isActive);
+  }
+
+  // Declared before GET :id, otherwise "recommendations" would be parsed as an ID.
+  @Get('recommendations')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Serialize(MentorRecommendationResponseDto)
+  @ApiOperation({
+    summary: 'Mentors recommended for you, ranked by match score',
+  })
+  @ApiResponse({ status: 200, type: MentorRecommendationResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid limit' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 404, description: 'User no longer exists' })
+  recommendations(
+    @CurrentUser() userId: string,
+    @Query() query: RecommendationQueryDto,
+  ): Promise<MentorRecommendationResponseDto> {
+    return this.matching.recommend(userId, query.limit);
   }
 
   @Get()

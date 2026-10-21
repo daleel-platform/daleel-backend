@@ -13,6 +13,7 @@ import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter
 import { ResponseInterceptor } from '../src/common/interceptors/response.interceptor.js';
 import { PasswordResetDeliveryService } from '../src/modules/auth/password-reset-delivery.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { MailService } from '../src/modules/mail/mail.service.js';
 
 describe('Password reset with PostgreSQL (e2e)', () => {
   let app: INestApplication;
@@ -154,5 +155,88 @@ describe('Password reset with PostgreSQL (e2e)', () => {
     expect(user.passwordResetTokenHash).toBeNull();
     expect(user.passwordResetExpiresAt).toBeNull();
     expect(user.passwordHash).not.toBe(newPassword);
+  });
+});
+
+describe('Password reset mail integration (e2e)', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+
+  const email = `mail-integration-${randomUUID()}@example.com`;
+
+  const mailMock = {
+    sendPasswordResetEmail: vi.fn(),
+  };
+
+  beforeAll(async () => {
+    mailMock.sendPasswordResetEmail.mockResolvedValue(undefined);
+
+    const module = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(MailService)
+      .useValue(mailMock)
+      .compile();
+
+    app = module.createNestApplication();
+
+    app.use(cookieParser());
+    app.setGlobalPrefix('api');
+    app.enableVersioning({
+      type: VersioningType.URI,
+      defaultVersion: '1',
+    });
+
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+
+    app.useGlobalFilters(new AllExceptionsFilter());
+    app.useGlobalInterceptors(new ResponseInterceptor());
+
+    await app.init();
+
+    prisma = app.get(PrismaService);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/register')
+      .send({
+        email,
+        name: 'Mail Integration Test',
+        password: 'OriginalPass1!',
+      })
+      .expect(201);
+  });
+
+  afterAll(async () => {
+    if (prisma) {
+      await prisma.user.deleteMany({
+        where: { email },
+      });
+    }
+
+    if (app) {
+      await app.close();
+    }
+  });
+
+  it('should invoke MailService when requesting a password reset', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/forgot-password')
+      .send({ email })
+      .expect(200);
+
+    expect(mailMock.sendPasswordResetEmail).toHaveBeenCalledOnce();
+
+    expect(mailMock.sendPasswordResetEmail).toHaveBeenCalledWith(
+      email,
+      expect.stringContaining('/reset-password?token='),
+      expect.any(Number),
+      'Mail Integration Test',
+    );
   });
 });

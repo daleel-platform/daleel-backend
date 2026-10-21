@@ -22,8 +22,14 @@ async function bootstrap() {
   app.use(helmet());
   app.use(compression());
 
+  const configService = app.get(ConfigService);
+  const corsOrigin = configService.get<string>('CORS_ORIGIN');
+
   // CORS
-  app.enableCors();
+  app.enableCors({
+    origin: corsOrigin ? corsOrigin.split(',').map((o) => o.trim()) : true,
+    credentials: true,
+  });
 
   // Global prefix & URI versioning (/api/v1/...)
   app.setGlobalPrefix('api');
@@ -56,7 +62,6 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   // Start server
-  const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
 
   await app.listen(port);

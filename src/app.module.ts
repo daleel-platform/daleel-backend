@@ -5,6 +5,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AppConfigModule } from './config/index.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { MessagingModule } from './modules/messaging/messaging.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
@@ -29,6 +30,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     UsersModule,
     AuthModule,
     MentorsModule,
+    MessagingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
@@ -41,6 +42,9 @@ export class UpdateUserDto {
     example: ['Cloud Architecture', 'Distributed Systems'],
     type: [String],
   })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? [value] : value,
+  )
   @IsArray()
   @IsString({ each: true })
   @IsOptional()

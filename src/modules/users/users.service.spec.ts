@@ -1,3 +1,4 @@
+import { StorageService } from '../storage/storage.service.js';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -15,6 +16,12 @@ describe('UsersService', () => {
     };
   };
 
+  const storage = { uploadFile: vi.fn(), deleteFile: vi.fn() };
+  const file = {
+    buffer: Buffer.from('image'),
+    mimetype: 'image/png',
+  } as Express.Multer.File;
+
   const mockDate = new Date();
   const mockUser = {
     id: '11111111-1111-1111-1111-111111111111',
@@ -30,6 +37,7 @@ describe('UsersService', () => {
   };
 
   beforeEach(async () => {
+    vi.resetAllMocks();
     prisma = {
       user: {
         findUnique: vi.fn(),
@@ -42,6 +50,7 @@ describe('UsersService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
+        { provide: StorageService, useValue: storage },
         {
           provide: PrismaService,
           useValue: prisma,
@@ -189,6 +198,63 @@ describe('UsersService', () => {
 
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
+  });
+
+  it('uploads a public avatar with a stable user identifier and preserves normal fields', async () => {
+    prisma.user.findUnique.mockResolvedValue(mockUser);
+    storage.uploadFile.mockResolvedValue({
+      url: 'https://example.com/avatar.png',
+    });
+    prisma.user.update.mockResolvedValue({
+      ...mockUser,
+      avatarUrl: 'https://example.com/avatar.png',
+    });
+    await service.update(
+      mockUser.id,
+      { bio: 'New bio', avatarUrl: 'https://example.com/ignored.png' },
+      file,
+    );
+    expect(storage.uploadFile).toHaveBeenCalledWith(
+      file,
+      expect.objectContaining({
+        folder: 'daleel/avatars',
+        publicId: mockUser.id,
+        type: 'upload',
+        resourceType: 'image',
+        overwrite: true,
+      }),
+    );
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: mockUser.id },
+        data: { bio: 'New bio', avatarUrl: 'https://example.com/avatar.png' },
+      }),
+    );
+  });
+  it('does not change the database if uploading fails, or upload for a missing user', async () => {
+    prisma.user.findUnique.mockResolvedValue(mockUser);
+    storage.uploadFile.mockRejectedValue(new Error('Upload failed'));
+    await expect(service.update(mockUser.id, {}, file)).rejects.toThrow(
+      'Upload failed',
+    );
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    storage.uploadFile.mockClear();
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(service.update(mockUser.id, {}, file)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(storage.uploadFile).not.toHaveBeenCalled();
+  });
+  it('does not delete a shared overwritten avatar when the database update fails', async () => {
+    prisma.user.findUnique.mockResolvedValue(mockUser);
+    storage.uploadFile.mockResolvedValue({
+      url: 'https://example.com/avatar.png',
+    });
+    prisma.user.update.mockRejectedValue(new Error('Database failed'));
+    await expect(service.update(mockUser.id, {}, file)).rejects.toThrow(
+      'Database failed',
+    );
+    expect(storage.deleteFile).not.toHaveBeenCalled();
   });
 
   it('stores the reset hash and expiration through the User module', async () => {

@@ -1,3 +1,4 @@
+import { MentorsModule } from './modules/mentors/mentors.module.js';
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller.js';
@@ -27,6 +28,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     PrismaModule,
     UsersModule,
     AuthModule,
+    MentorsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

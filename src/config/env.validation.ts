@@ -6,7 +6,6 @@ import {
   IsInt,
   IsNumber,
   IsOptional,
-  IsNotEmpty,
   IsString,
   IsUrl,
   Max,

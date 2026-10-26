@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MailerService } from '@nestjs-modules/mailer';
 import { MailService } from './mail.service.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConfigService } from '@nestjs/config';
 
 describe('MailService', () => {
   let service: MailService;
@@ -19,6 +20,12 @@ describe('MailService', () => {
         {
           provide: MailerService,
           useValue: mockMailerService,
+        },
+        {
+          provide: ConfigService,
+          useValue: new ConfigService({
+            NODE_ENV: 'test',
+          }),
         },
       ],
     }).compile();

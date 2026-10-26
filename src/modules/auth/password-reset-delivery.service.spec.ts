@@ -28,8 +28,8 @@ describe('PasswordResetDeliveryService', () => {
     );
   });
 
-  it('uses the default reset URL when none is configured', async () => {
-    const sendPasswordResetEmail = vi.fn().mockResolvedValue(undefined);
+  it('throws an error when PASSWORD_RESET_URL is not configured', async () => {
+    const sendPasswordResetEmail = vi.fn();
 
     const config = new ConfigService({
       PASSWORD_RESET_EXPIRES_IN: 1800,
@@ -41,13 +41,10 @@ describe('PasswordResetDeliveryService', () => {
 
     const service = new PasswordResetDeliveryService(config, mailService);
 
-    await service.send('test@example.com', 'secret');
-
-    expect(sendPasswordResetEmail).toHaveBeenCalledExactlyOnceWith(
-      'test@example.com',
-      'http://localhost:3000/reset-password?token=secret',
-      30,
-      undefined,
+    await expect(service.send('test@example.com', 'secret')).rejects.toThrow(
+      'PASSWORD_RESET_URL',
     );
+
+    expect(sendPasswordResetEmail).not.toHaveBeenCalled();
   });
 });

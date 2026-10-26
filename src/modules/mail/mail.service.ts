@@ -1,10 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 import type { PasswordResetEmailContext } from './mail.types.js';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class MailService {
-  constructor(private readonly mailerService: MailerService) {}
+  private readonly logger = new Logger(MailService.name);
+
+  constructor(
+    private readonly mailerService: MailerService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async sendPasswordResetEmail(
     to: string,
@@ -36,12 +42,25 @@ export class MailService {
       expiryMinutes,
     };
 
-    await this.mailerService.sendMail({
+    const result = await this.mailerService.sendMail({
       to,
       subject: 'Reset Your Password – Daleel',
       template: 'password-reset',
       context,
       text: plainText,
     });
+    const isDevelopment =
+      this.configService.get<string>('NODE_ENV') === 'development';
+
+    const smtpConfigured =
+      Boolean(this.configService.get<string>('SMTP_HOST')) &&
+      this.configService.get<number>('SMTP_PORT') !== undefined &&
+      Boolean(this.configService.get<string>('SMTP_USER')) &&
+      Boolean(this.configService.get<string>('SMTP_PASSWORD')) &&
+      Boolean(this.configService.get<string>('SMTP_FROM'));
+
+    if (isDevelopment && !smtpConfigured) {
+      this.logger.log(`Development reset email: ${result.message}`);
+    }
   }
 }

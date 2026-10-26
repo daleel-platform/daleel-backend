@@ -91,13 +91,13 @@ export class EnvironmentVariables {
   @Min(1)
   JWT_REFRESH_EXPIRES_IN: number = 604800;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsUrl({
     require_tld: false,
     require_protocol: true,
     protocols: ['http', 'https'],
   })
-  PASSWORD_RESET_URL?: string;
+  PASSWORD_RESET_URL: string;
 
   @IsInt()
   @Min(1)

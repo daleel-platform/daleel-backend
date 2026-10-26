@@ -11,12 +11,7 @@ export class PasswordResetDeliveryService {
   ) {}
 
   async send(email: string, token: string, name?: string): Promise<void> {
-    const url = new URL(
-      this.config.get<string>(
-        'PASSWORD_RESET_URL',
-        'http://localhost:3000/reset-password',
-      ),
-    );
+    const url = new URL(this.config.getOrThrow<string>('PASSWORD_RESET_URL'));
     url.searchParams.set('token', token);
     const expirySeconds = this.config.getOrThrow<number>(
       'PASSWORD_RESET_EXPIRES_IN',

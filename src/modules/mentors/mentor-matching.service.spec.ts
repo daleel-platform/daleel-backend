@@ -4,7 +4,7 @@ import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { UsersService } from '../users/users.service.js';
-import { EMBEDDING_CLIENT } from './embedding.provider.js';
+import { MentorEmbeddingService } from './mentor-embedding.service.js';
 import { MentorMatchingService } from './mentor-matching.service.js';
 import {
   buildRationale,
@@ -78,13 +78,18 @@ describe('MentorMatchingService', () => {
       return Promise.resolve(value);
     }),
   };
-  const embeddings = { model: 'test/model', embed: vi.fn() };
+  const embeddings: {
+    model: string | null;
+    embedMentee: ReturnType<typeof vi.fn>;
+  } = { model: null, embedMentee: vi.fn() };
   const config = { getOrThrow: vi.fn().mockReturnValue(3600) };
 
   const mentor = (
     id: string,
     skills: string[],
     yearsOfExperience: number | null,
+    embedding: number[] = [],
+    embeddingModel: string | null = null,
   ) => ({
     id,
     userId: `user-${id}`,
@@ -93,6 +98,8 @@ describe('MentorMatchingService', () => {
     skills,
     yearsOfExperience,
     isActive: true,
+    embedding,
+    embeddingModel,
     user: { name: id, avatarUrl: null, bio: null },
   });
   const mentee = (interests: string[], bio: string | null = null) => ({
@@ -101,24 +108,22 @@ describe('MentorMatchingService', () => {
     bio,
   });
 
-  const build = async (embeddingClient: typeof embeddings | null) => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    store.clear();
+    embeddings.model = null;
+    embeddings.embedMentee.mockResolvedValue(null);
     const module = await Test.createTestingModule({
       providers: [
         MentorMatchingService,
         { provide: PrismaService, useValue: prisma },
         { provide: UsersService, useValue: users },
         { provide: CACHE_MANAGER, useValue: cache },
-        { provide: EMBEDDING_CLIENT, useValue: embeddingClient },
+        { provide: MentorEmbeddingService, useValue: embeddings },
         { provide: ConfigService, useValue: config },
       ],
     }).compile();
-    return module.get(MentorMatchingService);
-  };
-
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    store.clear();
-    service = await build(null);
+    service = module.get(MentorMatchingService);
   });
 
   it('ranks by skill overlap, excludes inactive mentors and the mentee, and caches the result', async () => {
@@ -191,61 +196,74 @@ describe('MentorMatchingService', () => {
     await expect(service.recommend('ghost', 10)).rejects.toThrow('not found');
   });
 
-  describe('with an AI provider', () => {
-    beforeEach(async () => {
-      service = await build(embeddings);
+  it('never returns stored vectors in the response', async () => {
+    users.findById.mockResolvedValue(mentee(['Go']));
+    mentorProfile.findMany.mockResolvedValue([
+      mentor('a', ['Go'], 1, [1, 0], 'test/model'),
+    ]);
+    const { mentor: profile } = (await service.recommend('mentee', 10))
+      .items[0];
+    expect(profile).not.toHaveProperty('embedding');
+    expect(profile).not.toHaveProperty('embeddingModel');
+    expect(profile).toMatchObject({ id: 'a', user: { name: 'a' } });
+  });
+
+  describe('with embeddings enabled', () => {
+    beforeEach(() => {
+      embeddings.model = 'test/model';
     });
 
-    it('adds semantic similarity, which can rank a mentor without exact skill overlap', async () => {
+    it("embeds only the mentee and compares against mentors' stored vectors", async () => {
       users.findById.mockResolvedValue(mentee(['frontend'], 'Learning React'));
       mentorProfile.findMany.mockResolvedValue([
-        mentor('backend', ['Java'], 5),
-        mentor('ui', ['React'], 5),
+        mentor('backend', ['Java'], 5, [0, 1], 'test/model'),
+        mentor('ui', ['React'], 5, [0.9, 0.1], 'test/model'),
       ]);
-      // mentee, backend, ui
-      embeddings.embed.mockResolvedValue([
-        [1, 0],
-        [0, 1],
-        [0.9, 0.1],
-      ]);
+      embeddings.embedMentee.mockResolvedValue([1, 0]);
 
       const result = await service.recommend('mentee', 10);
 
+      expect(embeddings.embedMentee).toHaveBeenCalledTimes(1);
+      expect(embeddings.embedMentee).toHaveBeenCalledWith(
+        ['frontend'],
+        'Learning React',
+      );
       expect(result.semanticScoring).toBe(true);
-      expect(result.items[0].mentor.id).toBe('ui');
-      expect(result.items[0].matchScore).toBeGreaterThan(
-        result.items[1].matchScore ?? 0,
+      expect(result.items.map((i) => i.mentor.id)).toEqual(['ui', 'backend']);
+      // 0.15*0.5 + 0.35*cos([1,0],[0.9,0.1]) ≈ 0.075 + 0.348 = 42
+      expect(result.items[0].matchScore).toBe(42);
+      expect(result.items[0].rationale).toContain(
+        'Profile closely matches your goals',
       );
-      expect(embeddings.embed).toHaveBeenCalledTimes(1);
-      expect(embeddings.embed.mock.calls[0][0]).toHaveLength(3);
     });
 
-    it('reuses cached vectors and only embeds texts it has not seen', async () => {
-      mentorProfile.findMany.mockResolvedValue([mentor('a', ['Go'], 1)]);
-      embeddings.embed.mockImplementation((texts: string[]) =>
-        Promise.resolve(texts.map(() => [1, 0])),
-      );
-      users.findById.mockResolvedValue(mentee(['Go']));
-      await service.recommend('mentee', 10);
-      users.findById.mockResolvedValue(mentee(['Go', 'Rust']));
-      await service.recommend('mentee', 10);
-
-      // second call: only the changed mentee text is embedded
-      expect(embeddings.embed).toHaveBeenCalledTimes(2);
-      expect(embeddings.embed.mock.calls[1][0]).toHaveLength(1);
-    });
-
-    it('degrades to skill overlap when the AI fails, and does not cache that result', async () => {
+    it('scores mentors with a missing or other-model vector without the semantic part', async () => {
       users.findById.mockResolvedValue(mentee(['React']));
-      mentorProfile.findMany.mockResolvedValue([mentor('a', ['React'], 0)]);
-      embeddings.embed.mockRejectedValue(new Error('timeout'));
+      mentorProfile.findMany.mockResolvedValue([
+        mentor('stale', ['React'], 0, [1, 0], 'old/model'),
+        mentor('missing', ['React'], 0),
+      ]);
+      embeddings.embedMentee.mockResolvedValue([1, 0]);
+
+      const result = await service.recommend('mentee', 10);
+
+      // skill 1, experience 0, semantic redistributed: 0.5 / 0.65 = 77
+      expect(result.items.map((i) => i.matchScore)).toEqual([77, 77]);
+    });
+
+    it('degrades to skill overlap when the mentee cannot be embedded, and does not cache that', async () => {
+      users.findById.mockResolvedValue(mentee(['React']));
+      mentorProfile.findMany.mockResolvedValue([
+        mentor('a', ['React'], 0, [1, 0], 'test/model'),
+      ]);
+      embeddings.embedMentee.mockResolvedValue(null);
 
       const result = await service.recommend('mentee', 10);
 
       expect(result.semanticScoring).toBe(false);
       expect(result.items[0]).toMatchObject({ matchScore: 77 });
       await service.recommend('mentee', 10);
-      expect(embeddings.embed).toHaveBeenCalledTimes(2);
+      expect(mentorProfile.findMany).toHaveBeenCalledTimes(2);
     });
   });
 });

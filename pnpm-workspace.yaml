@@ -4,5 +4,8 @@ allowBuilds:
   '@scarf/scarf': true
   esbuild: true
   msgpackr-extract: true
+  # CPU binaries ship in the package; the script only fetches optional GPU files.
+  onnxruntime-node: false
   prisma: true
+  protobufjs: false
   workerd: true

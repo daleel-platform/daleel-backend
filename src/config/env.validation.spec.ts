@@ -63,20 +63,22 @@ describe('environment validation', () => {
       'Environment validation error',
     );
   });
-  it('defaults mentor matching settings and validates them', () => {
-    const config = validate(validConfig);
-    expect(config.HF_API_TOKEN).toBeUndefined();
-    expect(config.EMBEDDINGS_MODEL).toBe(
-      'sentence-transformers/all-MiniLM-L6-v2',
-    );
-    expect(config.EMBEDDINGS_TIMEOUT_MS).toBe(3000);
-    expect(config.RECOMMENDATIONS_CACHE_TTL).toBe(3600);
+  it('enables embeddings by default except in tests, and parses the switch', () => {
+    expect(validate(validConfig).EMBEDDINGS_ENABLED).toBe(true);
+    expect(
+      validate({ ...validConfig, NODE_ENV: 'test' }).EMBEDDINGS_ENABLED,
+    ).toBe(false);
+    expect(
+      validate({ ...validConfig, NODE_ENV: 'test', EMBEDDINGS_ENABLED: 'true' })
+        .EMBEDDINGS_ENABLED,
+    ).toBe(true);
+    expect(
+      validate({ ...validConfig, EMBEDDINGS_ENABLED: 'false' })
+        .EMBEDDINGS_ENABLED,
+    ).toBe(false);
+    expect(validate(validConfig).RECOMMENDATIONS_CACHE_TTL).toBe(3600);
     for (const invalid of [
-      { HF_API_TOKEN: '' },
-      { EMBEDDINGS_MODEL: 'no-owner' },
-      { EMBEDDINGS_MODEL: '../escape/x' },
-      { EMBEDDINGS_MODEL: '../x' },
-      { EMBEDDINGS_TIMEOUT_MS: '50' },
+      { EMBEDDINGS_ENABLED: 'yes' },
       { RECOMMENDATIONS_CACHE_TTL: '0' },
     ]) {
       expect(() => validate({ ...validConfig, ...invalid })).toThrow(

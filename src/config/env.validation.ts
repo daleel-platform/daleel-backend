@@ -1,5 +1,6 @@
-import { plainToInstance } from 'class-transformer';
+import { plainToInstance, Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   ValidateIf,
   IsNotEmpty,
@@ -8,7 +9,6 @@ import {
   IsOptional,
   IsString,
   IsUrl,
-  Matches,
   Max,
   Min,
   MinLength,
@@ -113,22 +113,15 @@ export class EnvironmentVariables {
   @IsOptional()
   CORS_ORIGIN?: string;
 
-  // Semantic mentor matching is enabled only when a Hugging Face token is set.
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  HF_API_TOKEN?: string;
-
-  @IsString()
-  @Matches(/^[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/, {
-    message: 'EMBEDDINGS_MODEL must look like "owner/model-name"',
+  // Local AI embeddings for mentor matching. Defaults to on, except in tests
+  // (see validate()), so test runs never download the model.
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => {
+    const value = obj.EMBEDDINGS_ENABLED;
+    return value === 'true' ? true : value === 'false' ? false : value;
   })
-  EMBEDDINGS_MODEL: string = 'sentence-transformers/all-MiniLM-L6-v2';
-
-  @IsInt()
-  @Min(100)
-  @Max(30000)
-  EMBEDDINGS_TIMEOUT_MS: number = 3000;
+  @IsOptional()
+  @IsBoolean()
+  EMBEDDINGS_ENABLED?: boolean;
 
   @IsInt()
   @Min(60)
@@ -148,5 +141,7 @@ export function validate(config: Record<string, unknown>) {
   if (errors.length > 0) {
     throw new Error(`Environment validation error: ${errors.toString()}`);
   }
+  validatedConfig.EMBEDDINGS_ENABLED ??=
+    validatedConfig.NODE_ENV !== Environment.Test;
   return validatedConfig;
 }

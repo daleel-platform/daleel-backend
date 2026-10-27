@@ -3,6 +3,14 @@ import { ConfigService } from '@nestjs/config';
 export const EMBEDDING_CLIENT = Symbol('EMBEDDING_CLIENT');
 
 /**
+ * The embedding model, run locally inside this server with transformers.js.
+ * BGE models are trained with CLS pooling; q8 is the quantized ONNX build
+ * (smaller download, faster on CPU, negligible accuracy loss).
+ * The model is downloaded from the Hugging Face Hub on first use and cached.
+ */
+export const EMBEDDING_MODEL = 'Xenova/bge-small-en-v1.5';
+
+/**
  * Turns texts into vectors ("embeddings"). Texts with similar meaning get
  * vectors that point in similar directions, which is what semantic matching
  * compares. Returns one vector per input text, in the same order.
@@ -12,7 +20,18 @@ export interface EmbeddingClient {
   embed(texts: readonly string[]): Promise<number[][]>;
 }
 
-const HF_INFERENCE_URL = 'https://router.huggingface.co/hf-inference/models';
+export type Extractor = (
+  texts: string[],
+  options: { pooling: 'cls'; normalize: boolean },
+) => Promise<{ tolist(): unknown }>;
+
+async function loadExtractor(model: string): Promise<Extractor> {
+  // Imported lazily so the native ONNX runtime only loads when embeddings are enabled.
+  const { pipeline } = await import('@huggingface/transformers');
+  return (await pipeline('feature-extraction', model, {
+    dtype: 'q8',
+  })) as unknown as Extractor;
+}
 
 function isVectorList(value: unknown, expected: number): value is number[][] {
   if (!Array.isArray(value) || value.length !== expected) return false;
@@ -30,50 +49,45 @@ function isVectorList(value: unknown, expected: number): value is number[][] {
   );
 }
 
-export class HuggingFaceEmbeddingClient implements EmbeddingClient {
+export class LocalEmbeddingClient implements EmbeddingClient {
+  private extractor: Promise<Extractor> | null = null;
+
   constructor(
-    private readonly token: string,
     readonly model: string,
-    private readonly timeoutMs: number,
-    private readonly fetchFn: typeof fetch = fetch,
+    private readonly load: (
+      model: string,
+    ) => Promise<Extractor> = loadExtractor,
   ) {}
 
   async embed(texts: readonly string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
-    const response = await this.fetchFn(
-      `${HF_INFERENCE_URL}/${this.model}/pipeline/feature-extraction`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ inputs: texts }),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      },
-    );
-    if (!response.ok)
-      throw new Error(
-        `Embedding request failed with status ${response.status}`,
-      );
-    const body: unknown = await response.json();
-    if (!isVectorList(body, texts.length))
-      throw new Error('Embedding response has an unexpected shape');
-    return body;
+    const extractor = await this.getExtractor();
+    const output = await extractor([...texts], {
+      pooling: 'cls',
+      normalize: true,
+    });
+    const vectors = output.tolist();
+    if (!isVectorList(vectors, texts.length))
+      throw new Error('Embedding output has an unexpected shape');
+    return vectors;
+  }
+
+  /** Loads the model once; a failed load is retried on the next call. */
+  private getExtractor(): Promise<Extractor> {
+    this.extractor ??= this.load(this.model).catch((error: unknown) => {
+      this.extractor = null;
+      throw error;
+    });
+    return this.extractor;
   }
 }
 
-/** Provides an EmbeddingClient, or null when HF_API_TOKEN is not configured. */
+/** Provides an EmbeddingClient, or null when EMBEDDINGS_ENABLED is false. */
 export const EmbeddingProvider = {
   provide: EMBEDDING_CLIENT,
   inject: [ConfigService],
-  useFactory: (config: ConfigService): EmbeddingClient | null => {
-    const token = config.get<string>('HF_API_TOKEN');
-    if (!token) return null;
-    return new HuggingFaceEmbeddingClient(
-      token,
-      config.getOrThrow<string>('EMBEDDINGS_MODEL'),
-      config.getOrThrow<number>('EMBEDDINGS_TIMEOUT_MS'),
-    );
-  },
+  useFactory: (config: ConfigService): EmbeddingClient | null =>
+    config.get<boolean>('EMBEDDINGS_ENABLED')
+      ? new LocalEmbeddingClient(EMBEDDING_MODEL)
+      : null,
 };

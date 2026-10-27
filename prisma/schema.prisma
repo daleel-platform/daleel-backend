@@ -37,6 +37,10 @@ model MentorProfile {
   yearsOfExperience Int?     @map("years_of_experience")
   linkedinUrl       String?  @map("linkedin_url")
   isActive          Boolean  @default(true) @map("is_active")
+  /// Vector of headline + about + skills, used for semantic matching.
+  embedding         Float[]  @default([])
+  /// Model that produced `embedding`; a different model means it is stale.
+  embeddingModel    String?  @map("embedding_model")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 

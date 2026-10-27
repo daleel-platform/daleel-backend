@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard.js';
 import { MentorsController } from './mentors.controller.js';
 import { MentorsService } from './mentors.service.js';
 import { MentorMatchingService } from './mentor-matching.service.js';
+import { MentorEmbeddingService } from './mentor-embedding.service.js';
 import { EmbeddingProvider } from './embedding.provider.js';
 
 @Module({
@@ -21,6 +22,7 @@ import { EmbeddingProvider } from './embedding.provider.js';
   providers: [
     MentorsService,
     MentorMatchingService,
+    MentorEmbeddingService,
     EmbeddingProvider,
     JwtAuthGuard,
   ],

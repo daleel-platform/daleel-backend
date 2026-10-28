@@ -63,6 +63,30 @@ describe('environment validation', () => {
       'Environment validation error',
     );
   });
+  it('enables embeddings by default except in tests, and parses the switch', () => {
+    expect(validate(validConfig).EMBEDDINGS_ENABLED).toBe(true);
+    expect(
+      validate({ ...validConfig, NODE_ENV: 'test' }).EMBEDDINGS_ENABLED,
+    ).toBe(false);
+    expect(
+      validate({ ...validConfig, NODE_ENV: 'test', EMBEDDINGS_ENABLED: 'true' })
+        .EMBEDDINGS_ENABLED,
+    ).toBe(true);
+    expect(
+      validate({ ...validConfig, EMBEDDINGS_ENABLED: 'false' })
+        .EMBEDDINGS_ENABLED,
+    ).toBe(false);
+    expect(validate(validConfig).RECOMMENDATIONS_CACHE_TTL).toBe(3600);
+    for (const invalid of [
+      { EMBEDDINGS_ENABLED: 'yes' },
+      { RECOMMENDATIONS_CACHE_TTL: '0' },
+    ]) {
+      expect(() => validate({ ...validConfig, ...invalid })).toThrow(
+        'Environment validation error',
+      );
+    }
+  });
+
   it('allows an omitted reset URL and valid frontend URLs', () => {
     expect(validate(validConfig).PASSWORD_RESET_URL).toBeUndefined();
     for (const url of [

@@ -92,17 +92,45 @@ export class EnvironmentVariables {
   @Min(1)
   JWT_REFRESH_EXPIRES_IN: number = 604800;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsUrl({
     require_tld: false,
     require_protocol: true,
     protocols: ['http', 'https'],
   })
-  PASSWORD_RESET_URL?: string;
+  PASSWORD_RESET_URL: string;
 
   @IsInt()
   @Min(1)
   PASSWORD_RESET_EXPIRES_IN: number = 1200;
+
+  // SMTP Configuration
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  SMTP_HOST?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  SMTP_PORT?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  SMTP_USER?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  SMTP_PASSWORD?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  SMTP_FROM?: string;
 
   @IsInt()
   @Min(4)
@@ -129,10 +157,13 @@ export class EnvironmentVariables {
   RECOMMENDATIONS_CACHE_TTL: number = 3600;
 }
 
-export function validate(config: Record<string, unknown>) {
+export function validate(
+  config: Record<string, unknown>,
+): EnvironmentVariables {
   const validatedConfig = plainToInstance(EnvironmentVariables, config, {
     enableImplicitConversion: true,
   });
+
   const errors = validateSync(validatedConfig, {
     skipMissingProperties: false,
     validationError: { target: false, value: false },
@@ -141,6 +172,30 @@ export function validate(config: Record<string, unknown>) {
   if (errors.length > 0) {
     throw new Error(`Environment validation error: ${errors.toString()}`);
   }
+  const smtpValues = [
+    validatedConfig.SMTP_HOST,
+    validatedConfig.SMTP_PORT,
+    validatedConfig.SMTP_USER,
+    validatedConfig.SMTP_PASSWORD,
+    validatedConfig.SMTP_FROM,
+  ];
+
+  const smtpConfigured = smtpValues.every(
+    (value) => value !== undefined && value !== null && value !== '',
+  );
+
+  const smtpPartiallyConfigured = smtpValues.some(
+    (value) => value !== undefined && value !== null && value !== '',
+  );
+
+  if (smtpPartiallyConfigured && !smtpConfigured) {
+    throw new Error('Incomplete SMTP configuration');
+  }
+
+  if (validatedConfig.NODE_ENV === Environment.Production && !smtpConfigured) {
+    throw new Error('SMTP configuration is required in production');
+  }
+
   validatedConfig.EMBEDDINGS_ENABLED ??=
     validatedConfig.NODE_ENV !== Environment.Test;
   return validatedConfig;

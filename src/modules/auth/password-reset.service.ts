@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
 import { hash } from 'bcryptjs';
 import { createHash, randomBytes } from 'node:crypto';
@@ -16,7 +17,10 @@ export class PasswordResetService {
     private readonly users: UsersService,
     private readonly config: ConfigService,
     private readonly delivery: PasswordResetDeliveryService,
-  ) {}
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(PasswordResetService.name);
+  }
 
   async requestReset(email: string): Promise<PasswordResetResponseDto> {
     const user = await this.users.findByEmail(email);
@@ -31,7 +35,11 @@ export class PasswordResetService {
             this.config.getOrThrow<number>('PASSWORD_RESET_EXPIRES_IN') * 1000,
         ),
       );
-      await this.delivery.send(user.email, token);
+      try {
+        await this.delivery.send(user.email, token, user.name);
+      } catch {
+        this.logger.error('Password reset email delivery failed');
+      }
     }
     return { message: REQUEST_MESSAGE };
   }

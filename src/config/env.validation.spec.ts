@@ -6,6 +6,7 @@ const validConfig = {
   DATABASE_URL: 'postgresql://localhost:5432/daleel',
   JWT_SECRET: 'a'.repeat(32),
   JWT_REFRESH_SECRET: 'b'.repeat(32),
+  PASSWORD_RESET_URL: 'http://localhost:5173/reset-password',
 };
 
 describe('environment validation', () => {
@@ -77,6 +78,7 @@ describe('environment validation', () => {
         .EMBEDDINGS_ENABLED,
     ).toBe(false);
     expect(validate(validConfig).RECOMMENDATIONS_CACHE_TTL).toBe(3600);
+
     for (const invalid of [
       { EMBEDDINGS_ENABLED: 'yes' },
       { RECOMMENDATIONS_CACHE_TTL: '0' },
@@ -87,10 +89,15 @@ describe('environment validation', () => {
     }
   });
 
-  it('allows an omitted reset URL and valid frontend URLs', () => {
-    expect(validate(validConfig).PASSWORD_RESET_URL).toBeUndefined();
+  it('requires a reset URL and accepts valid frontend URLs', () => {
+    const { PASSWORD_RESET_URL: _passwordResetUrl, ...configWithoutResetUrl } =
+      validConfig;
+
+    expect(() => validate(configWithoutResetUrl)).toThrow(
+      'Environment validation error',
+    );
     for (const url of [
-      'http://localhost:3000/reset-password',
+      'http://localhost:5173/reset-password',
       'https://example.com/reset-password',
     ]) {
       expect(

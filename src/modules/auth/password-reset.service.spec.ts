@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { compare, hash } from 'bcryptjs';
 import { createHash } from 'node:crypto';
+import { PinoLogger } from 'nestjs-pino';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UsersService } from '../users/users.service.js';
 import { PasswordResetDeliveryService } from './password-reset-delivery.service.js';
@@ -28,6 +29,15 @@ describe('PasswordResetService', () => {
     const module = await Test.createTestingModule({
       providers: [
         PasswordResetService,
+        {
+          provide: PinoLogger,
+          useValue: {
+            setContext: vi.fn(),
+            error: vi.fn(),
+            warn: vi.fn(),
+            info: vi.fn(),
+          },
+        },
         { provide: UsersService, useValue: users },
         { provide: PasswordResetDeliveryService, useValue: delivery },
         {

@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { UsersService } from '../users/users.service.js';
 import { MentorsService } from './mentors.service.js';
 import { MentorQueryDto } from './dto/mentor-query.dto.js';
+import { MentorEmbeddingService } from './mentor-embedding.service.js';
 
 const error = (code: string) =>
   new Prisma.PrismaClientKnownRequestError('Database error', {
@@ -23,6 +24,7 @@ describe('MentorsService', () => {
   };
   const prisma = { mentorProfile, $transaction: vi.fn() };
   const users = { findById: vi.fn() };
+  const embeddings = { refresh: vi.fn() };
   beforeEach(async () => {
     vi.resetAllMocks();
     const module = await Test.createTestingModule({
@@ -30,6 +32,7 @@ describe('MentorsService', () => {
         MentorsService,
         { provide: PrismaService, useValue: prisma },
         { provide: UsersService, useValue: users },
+        { provide: MentorEmbeddingService, useValue: embeddings },
       ],
     }).compile();
     service = module.get(MentorsService);
@@ -45,8 +48,12 @@ describe('MentorsService', () => {
     expect(await service.create('owner', dto)).toEqual(profile);
     expect(users.findById).toHaveBeenCalledWith('owner');
     expect(mentorProfile.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { ...dto, userId: 'owner' } }),
+      expect.objectContaining({
+        data: { ...dto, userId: 'owner' },
+        omit: { embedding: true, embeddingModel: true },
+      }),
     );
+    expect(embeddings.refresh).toHaveBeenCalledWith('mentor-id', profile);
     mentorProfile.create.mockRejectedValue(error('P2002'));
     await expect(service.create('owner', dto)).rejects.toMatchObject({
       status: 409,
@@ -60,9 +67,11 @@ describe('MentorsService', () => {
     expect(mentorProfile.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 'owner' },
-        data: { headline: 'New' },
+        data: { headline: 'New', embeddingModel: null },
       }),
     );
+    expect(embeddings.refresh).toHaveBeenCalledWith('mentor-id', profile);
+    embeddings.refresh.mockClear();
     expect(await service.setStatus('owner', false)).toEqual(profile);
     expect(mentorProfile.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -70,6 +79,8 @@ describe('MentorsService', () => {
         data: { isActive: false },
       }),
     );
+    // Activating/deactivating does not change the text, so no re-embedding.
+    expect(embeddings.refresh).not.toHaveBeenCalled();
     mentorProfile.update.mockRejectedValue(error('P2025'));
     await expect(service.update('missing', {})).rejects.toMatchObject({
       status: 404,

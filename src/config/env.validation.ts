@@ -1,5 +1,6 @@
-import { plainToInstance } from 'class-transformer';
+import { plainToInstance, Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   ValidateIf,
   IsNotEmpty,
@@ -139,6 +140,21 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   CORS_ORIGIN?: string;
+
+  // Local AI embeddings for mentor matching. Defaults to on, except in tests
+  // (see validate()), so test runs never download the model.
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => {
+    const value = obj.EMBEDDINGS_ENABLED;
+    return value === 'true' ? true : value === 'false' ? false : value;
+  })
+  @IsOptional()
+  @IsBoolean()
+  EMBEDDINGS_ENABLED?: boolean;
+
+  @IsInt()
+  @Min(60)
+  @Max(86400)
+  RECOMMENDATIONS_CACHE_TTL: number = 3600;
 }
 
 export function validate(
@@ -156,7 +172,6 @@ export function validate(
   if (errors.length > 0) {
     throw new Error(`Environment validation error: ${errors.toString()}`);
   }
-
   const smtpValues = [
     validatedConfig.SMTP_HOST,
     validatedConfig.SMTP_PORT,
@@ -181,5 +196,7 @@ export function validate(
     throw new Error('SMTP configuration is required in production');
   }
 
+  validatedConfig.EMBEDDINGS_ENABLED ??=
+    validatedConfig.NODE_ENV !== Environment.Test;
   return validatedConfig;
 }

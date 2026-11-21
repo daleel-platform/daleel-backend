@@ -154,11 +154,21 @@ export class MessagingGateway
     const userId = this.getSocketUserId(client);
     const message = await this.messagesService.createMessage(userId, dto);
 
-    this.server
-      .to(`conversation:${dto.conversationId}`)
-      .emit('messageCreated', message);
+    this.emitMessageCreated(dto.conversationId, message);
 
     return message;
+  }
+
+  /**
+   * Broadcasts a newly created message to all sockets in the conversation room.
+   */
+  emitMessageCreated(
+    conversationId: string,
+    message: MessageResponseDto,
+  ): void {
+    this.server
+      ?.to(`conversation:${conversationId}`)
+      .emit('messageCreated', message);
   }
 
   /**

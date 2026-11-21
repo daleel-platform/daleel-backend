@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { MessageType } from '@prisma/client';
 import { Expose, Type } from 'class-transformer';
 
 export class QuotedMessageResponseDto {
@@ -10,9 +11,23 @@ export class QuotedMessageResponseDto {
   @Expose()
   senderId!: string;
 
+  @ApiProperty({
+    description: 'Message type of the quoted message',
+    enum: MessageType,
+  })
+  @Expose()
+  type!: MessageType;
+
   @ApiProperty({ description: 'Content preview of the quoted message' })
   @Expose()
   content!: string;
+
+  @ApiPropertyOptional({
+    description: 'Original filename if the quoted message has an attachment',
+    nullable: true,
+  })
+  @Expose()
+  fileName!: string | null;
 }
 
 export class MessageResponseDto {
@@ -28,9 +43,44 @@ export class MessageResponseDto {
   @Expose()
   senderId!: string;
 
-  @ApiProperty({ description: 'Text content of the message' })
+  @ApiProperty({
+    description: 'Message type',
+    enum: MessageType,
+  })
+  @Expose()
+  type!: MessageType;
+
+  @ApiProperty({ description: 'Text content or caption of the message' })
   @Expose()
   content!: string;
+
+  @ApiPropertyOptional({
+    description: 'Time-limited signed URL for media attachments',
+    nullable: true,
+  })
+  @Expose()
+  mediaUrl!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Original sanitized filename of the attachment',
+    nullable: true,
+  })
+  @Expose()
+  fileName!: string | null;
+
+  @ApiPropertyOptional({
+    description: 'Attachment file size in bytes',
+    nullable: true,
+  })
+  @Expose()
+  fileSize!: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Validated MIME type of the attachment',
+    nullable: true,
+  })
+  @Expose()
+  mimeType!: string | null;
 
   @ApiPropertyOptional({
     description: 'Parent message UUID being replied to',

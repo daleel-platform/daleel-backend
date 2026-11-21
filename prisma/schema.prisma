@@ -67,16 +67,27 @@ model Conversation {
   @@map("conversations")
 }
 
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+}
+
 model Message {
-  id             String    @id @default(uuid())
-  conversationId String    @map("conversation_id")
-  senderId       String    @map("sender_id")
-  content        String
-  replyToId      String?   @map("reply_to_id")
-  isEdited       Boolean   @default(false) @map("is_edited")
-  deletedAt      DateTime? @map("deleted_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id             String      @id @default(uuid())
+  conversationId String      @map("conversation_id")
+  senderId       String      @map("sender_id")
+  type           MessageType @default(TEXT)
+  content        String      @default("")
+  mediaPublicId  String?     @map("media_public_id")
+  fileName       String?     @map("file_name")
+  fileSize       Int?        @map("file_size")
+  mimeType       String?     @map("mime_type")
+  replyToId      String?     @map("reply_to_id")
+  isEdited       Boolean     @default(false) @map("is_edited")
+  deletedAt      DateTime?   @map("deleted_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)

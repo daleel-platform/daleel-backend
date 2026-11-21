@@ -4,9 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { MessageType } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { ConversationsService } from './conversations.service.js';
+import { SIGNED_MEDIA_URL_TTL_SECONDS } from './messaging.constants.js';
 
 describe('ConversationsService', () => {
   let service: ConversationsService;
@@ -19,6 +22,9 @@ describe('ConversationsService', () => {
       findMany: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
     };
+  };
+  let storageService: {
+    getSignedUrl: ReturnType<typeof vi.fn>;
   };
 
   const userAId = '11111111-1111-1111-1111-111111111111';
@@ -39,12 +45,22 @@ describe('ConversationsService', () => {
       },
     };
 
+    storageService = {
+      getSignedUrl: vi
+        .fn()
+        .mockReturnValue('https://signed.example/last-media'),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConversationsService,
         {
           provide: PrismaService,
           useValue: prisma,
+        },
+        {
+          provide: StorageService,
+          useValue: storageService,
         },
       ],
     }).compile();
@@ -157,7 +173,12 @@ describe('ConversationsService', () => {
               id: messageId,
               conversationId,
               senderId: userAId,
+              type: MessageType.TEXT,
               content: 'Hello World',
+              mediaPublicId: null,
+              fileName: null,
+              fileSize: null,
+              mimeType: null,
               replyToId: null,
               isEdited: false,
               deletedAt: null,
@@ -175,6 +196,57 @@ describe('ConversationsService', () => {
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe(conversationId);
       expect(result[0].lastMessage?.content).toBe('Hello World');
+      expect(storageService.getSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('should sign lastMessage mediaUrl and hide mediaPublicId when latest message has media', async () => {
+      const publicId = `daleel/conversations/${conversationId}/img-last`;
+      prisma.conversation.findMany.mockResolvedValue([
+        {
+          id: conversationId,
+          participant1Id: userAId,
+          participant2Id: userBId,
+          lastMessageAt: mockDate,
+          createdAt: mockDate,
+          updatedAt: mockDate,
+          participant1: { id: userAId, name: 'User A', avatarUrl: null },
+          participant2: { id: userBId, name: 'User B', avatarUrl: null },
+          messages: [
+            {
+              id: messageId,
+              conversationId,
+              senderId: userAId,
+              type: MessageType.IMAGE,
+              content: 'Screenshot',
+              mediaPublicId: publicId,
+              fileName: 'screen.png',
+              fileSize: 900,
+              mimeType: 'image/png',
+              replyToId: null,
+              isEdited: false,
+              deletedAt: null,
+              createdAt: mockDate,
+              updatedAt: mockDate,
+              replyTo: null,
+            },
+          ],
+        },
+      ]);
+
+      const result = await service.getUserConversations(userAId);
+
+      expect(storageService.getSignedUrl).toHaveBeenCalledWith(publicId, {
+        format: 'png',
+        resourceType: 'image',
+        expiresIn: SIGNED_MEDIA_URL_TTL_SECONDS,
+      });
+      expect(result[0].lastMessage?.mediaUrl).toBe(
+        'https://signed.example/last-media',
+      );
+      expect(result[0].lastMessage?.fileName).toBe('screen.png');
+      expect(
+        result[0].lastMessage && 'mediaPublicId' in result[0].lastMessage,
+      ).toBe(false);
     });
   });
 

@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { ConversationsService } from './conversations.service.js';
 import { DeleteMessageDto } from './dto/delete-message.dto.js';
 import { EditMessageDto } from './dto/edit-message.dto.js';
@@ -14,16 +16,27 @@ import { PaginatedMessagesResponseDto } from './dto/paginated-messages-response.
 import { SendMessageDto } from './dto/send-message.dto.js';
 import {
   MESSAGE_REPLY_SELECT,
+  createMediaUrlSigner,
   mapMessage,
+  resolveMediaStorageMetadata,
   type RawMessageWithReply,
 } from './messaging.constants.js';
 
 @Injectable()
 export class MessagesService {
+  private readonly logger = new Logger(MessagesService.name);
+  private readonly signMediaUrl: (
+    publicId: string,
+    mimeType: string,
+  ) => string | null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversationsService: ConversationsService,
-  ) {}
+    private readonly storageService: StorageService,
+  ) {
+    this.signMediaUrl = createMediaUrlSigner(this.storageService);
+  }
 
   /**
    * Creates and persists a new message (or reply), updating the conversation timestamp.
@@ -70,7 +83,7 @@ export class MessagesService {
       }),
     ]);
 
-    return mapMessage(message);
+    return mapMessage(message, this.signMediaUrl);
   }
 
   /**
@@ -114,11 +127,12 @@ export class MessagesService {
       },
     });
 
-    return mapMessage(updated);
+    return mapMessage(updated, this.signMediaUrl);
   }
 
   /**
-   * Performs a soft delete on a message owned by the requesting user.
+   * Performs a soft delete on a message owned by the requesting user
+   * and triggers best-effort cleanup of any associated cloud media asset.
    */
   async deleteMessage(
     userId: string,
@@ -126,7 +140,13 @@ export class MessagesService {
   ): Promise<MessageResponseDto> {
     const existing = await this.prisma.message.findUnique({
       where: { id: dto.messageId },
-      select: { id: true, senderId: true, deletedAt: true },
+      select: {
+        id: true,
+        senderId: true,
+        deletedAt: true,
+        mediaPublicId: true,
+        mimeType: true,
+      },
     });
 
     if (!existing) {
@@ -153,7 +173,25 @@ export class MessagesService {
       },
     });
 
-    return mapMessage(deleted);
+    if (existing.mediaPublicId && existing.mimeType) {
+      const metadata = resolveMediaStorageMetadata(existing.mimeType);
+      if (metadata) {
+        try {
+          await this.storageService.deleteFile(existing.mediaPublicId, {
+            type: 'authenticated',
+            resourceType: metadata.resourceType,
+          });
+        } catch (error) {
+          this.logger.warn(
+            `Best-effort media deletion failed for message ${existing.id}: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }`,
+          );
+        }
+      }
+    }
+
+    return mapMessage(deleted, this.signMediaUrl);
   }
 
   /**
@@ -205,7 +243,7 @@ export class MessagesService {
     const nextCursor = hasMore ? (chronological[0]?.id ?? null) : null;
 
     return {
-      items: chronological.map((msg) => mapMessage(msg)),
+      items: chronological.map((msg) => mapMessage(msg, this.signMediaUrl)),
       nextCursor,
       hasMore,
     };
@@ -215,6 +253,6 @@ export class MessagesService {
    * Exposes message mapping helper for callers.
    */
   mapMessage(raw: RawMessageWithReply): MessageResponseDto {
-    return mapMessage(raw);
+    return mapMessage(raw, this.signMediaUrl);
   }
 }

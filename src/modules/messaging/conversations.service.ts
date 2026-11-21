@@ -5,17 +5,29 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
 import { ConversationResponseDto } from './dto/conversation-response.dto.js';
 import {
   CONVERSATION_PARTICIPANT_SELECT,
   MESSAGE_REPLY_SELECT,
+  createMediaUrlSigner,
   mapMessage,
   type RawConversationWithDetails,
 } from './messaging.constants.js';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly signMediaUrl: (
+    publicId: string,
+    mimeType: string,
+  ) => string | null;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storageService: StorageService,
+  ) {
+    this.signMediaUrl = createMediaUrlSigner(this.storageService);
+  }
 
   /**
    * Enforces canonical alphabetical ordering for 1-to-1 conversation participants.
@@ -148,7 +160,9 @@ export class ConversationsService {
    */
   mapConversation(raw: RawConversationWithDetails): ConversationResponseDto {
     const latestRaw = raw.messages[0] ?? null;
-    const lastMessage = latestRaw ? mapMessage(latestRaw) : null;
+    const lastMessage = latestRaw
+      ? mapMessage(latestRaw, this.signMediaUrl)
+      : null;
 
     return {
       id: raw.id,

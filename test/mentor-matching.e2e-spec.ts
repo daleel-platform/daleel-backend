@@ -179,6 +179,7 @@ describe('Mentor recommendations (PostgreSQL e2e)', () => {
     expect(Object.keys(top.mentor.user).sort()).toEqual([
       'avatarUrl',
       'bio',
+      'id',
       'name',
     ]);
     const raw = JSON.stringify(res.body);

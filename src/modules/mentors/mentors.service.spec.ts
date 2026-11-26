@@ -89,6 +89,87 @@ describe('MentorsService', () => {
       status: 404,
     });
   });
+  it('persists work experiences on create and replaces them atomically on update', async () => {
+    mentorProfile.create.mockResolvedValue(profile);
+    await service.create('owner', {
+      headline: 'Staff Engineer',
+      about: 'Distributed systems',
+      skills: ['TypeScript'],
+      yearsOfExperience: 8,
+      experiences: [
+        {
+          title: 'Staff Engineer',
+          company: 'Stripe',
+          startYear: 2022,
+          summary: 'Led ledger services.',
+        },
+        {
+          title: 'Senior Engineer',
+          company: 'Acme',
+          startYear: 2019,
+          endYear: 2022,
+          summary: 'Built APIs.',
+        },
+      ],
+    });
+    expect(mentorProfile.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          experiences: {
+            create: [
+              {
+                title: 'Staff Engineer',
+                company: 'Stripe',
+                startYear: 2022,
+                endYear: null,
+                summary: 'Led ledger services.',
+              },
+              {
+                title: 'Senior Engineer',
+                company: 'Acme',
+                startYear: 2019,
+                endYear: 2022,
+                summary: 'Built APIs.',
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    mentorProfile.update.mockResolvedValue(profile);
+    await service.update('owner', {
+      experiences: [
+        {
+          title: 'Principal Engineer',
+          company: 'Stripe',
+          startYear: 2024,
+          endYear: null,
+          summary: 'Architecture lead.',
+        },
+      ],
+    });
+    expect(mentorProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'owner' },
+        data: expect.objectContaining({
+          experiences: {
+            deleteMany: {},
+            create: [
+              {
+                title: 'Principal Engineer',
+                company: 'Stripe',
+                startYear: 2024,
+                endYear: null,
+                summary: 'Architecture lead.',
+              },
+            ],
+          },
+          embeddingModel: null,
+        }),
+      }),
+    );
+  });
   it('only retrieves active public profiles', async () => {
     mentorProfile.findUnique.mockResolvedValue(profile);
     expect(await service.findOne('mentor-id')).toEqual(profile);

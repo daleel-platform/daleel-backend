@@ -127,6 +127,7 @@ describe('Mentors (PostgreSQL e2e)', () => {
     const data = results.find((r) => r.status === 201)!.body.data;
     mentorId = data.id;
     expect(data.user).toEqual({
+      id: ids[0],
       name: `Mentor ${marker} 0`,
       avatarUrl: null,
       bio: null,
@@ -218,6 +219,7 @@ describe('Mentors (PostgreSQL e2e)', () => {
     expect(Object.keys(first.body.data.items[0].user).sort()).toEqual([
       'avatarUrl',
       'bio',
+      'id',
       'name',
     ]);
     const second = await request(app.getHttpServer())

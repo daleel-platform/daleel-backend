@@ -7,16 +7,16 @@ import pg from 'pg';
 const DEV_PASSWORD = 'DaleelTest@123';
 
 interface SeedMentorInput {
-  email: string;
-  name: string;
-  bio: string;
-  interests: string[];
-  headline: string;
-  about: string;
-  skills: string[];
-  yearsOfExperience: number;
-  linkedinUrl: string;
-  isActive: boolean;
+  readonly email: string;
+  readonly name: string;
+  readonly bio: string;
+  readonly interests: readonly string[];
+  readonly headline: string;
+  readonly about: string;
+  readonly skills: readonly string[];
+  readonly yearsOfExperience: number;
+  readonly linkedinUrl: string;
+  readonly isActive: boolean;
 }
 
 const MENTORS_TO_SEED: readonly SeedMentorInput[] = [
@@ -217,11 +217,17 @@ const MENTORS_TO_SEED: readonly SeedMentorInput[] = [
 ];
 
 interface SeedExperienceInput {
-  title: string;
-  company: string;
-  startYear: number;
-  endYear: number | null;
-  summary: string;
+  readonly title: string;
+  readonly company: string;
+  readonly startYear: number;
+  readonly endYear: number | null;
+  readonly summary: string;
+}
+
+function previousTitleFor(currentTitle: string): string {
+  if (/^VP of Product$/i.test(currentTitle)) return 'Senior Product Manager';
+  if (/^Head of Engineering$/i.test(currentTitle)) return 'Engineering Manager';
+  return `Senior ${currentTitle.replace(/^(Staff|Principal|Lead|Senior)\s+/i, '')}`;
 }
 
 function buildSeedExperiences(mentor: SeedMentorInput): SeedExperienceInput[] {
@@ -248,7 +254,7 @@ function buildSeedExperiences(mentor: SeedMentorInput): SeedExperienceInput[] {
 
   if (currentStart > prevStart + 1) {
     entries.push({
-      title: `Senior ${currentTitle.replace(/^(Staff|Principal|Lead|VP of|Head of|Senior)\s+/i, '')}`,
+      title: previousTitleFor(currentTitle),
       company: 'Previous Tech Organization',
       startYear: prevStart,
       endYear: currentStart,
@@ -301,35 +307,38 @@ async function seedConversationWithMessages(
 
   const now = Date.now();
   const total = messages.length;
-  let firstMessageId: string | null = null;
 
-  for (let i = 0; i < total; i += 1) {
-    const item = messages[i];
-    const timestamp = new Date(now - (total - i) * 5 * 60 * 1000);
-    const created = await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        senderId: item.senderId,
-        type: MessageType.TEXT,
-        content: item.content,
-        isEdited: Boolean(item.isEdited),
-        replyToId: i === 2 && firstMessageId ? firstMessageId : null,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      },
-    });
-    if (i === 0) {
-      firstMessageId = created.id;
+  await prisma.$transaction(async (tx) => {
+    let firstMessageId: string | null = null;
+
+    for (let i = 0; i < total; i += 1) {
+      const item = messages[i];
+      const timestamp = new Date(now - (total - i) * 5 * 60 * 1000);
+      const created = await tx.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: item.senderId,
+          type: MessageType.TEXT,
+          content: item.content,
+          isEdited: Boolean(item.isEdited),
+          replyToId: i === 2 && firstMessageId ? firstMessageId : null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      });
+      if (i === 0) {
+        firstMessageId = created.id;
+      }
     }
-  }
 
-  if (total > 0) {
-    const latestTimestamp = new Date(now - 5 * 60 * 1000);
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { lastMessageAt: latestTimestamp },
-    });
-  }
+    if (total > 0) {
+      const latestTimestamp = new Date(now - 5 * 60 * 1000);
+      await tx.conversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: latestTimestamp },
+      });
+    }
+  });
 
   return true;
 }
@@ -348,158 +357,134 @@ async function main(): Promise<void> {
     const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
 
     // 1. Seed Demo Mentees
+    const demoMenteeFields = {
+      passwordHash,
+      name: 'Ali Hassan',
+      bio: 'Software engineer leveling up in system design, TypeScript, and engineering leadership.',
+      interests: ['System Design', 'TypeScript', 'React', 'Tech Leadership'],
+    };
     const demoMentee = await prisma.user.upsert({
       where: { email: 'mentee@daleel.dev' },
-      update: {
-        name: 'Ali Hassan',
-        bio: 'Software engineer leveling up in system design, TypeScript, and engineering leadership.',
-        interests: ['System Design', 'TypeScript', 'React', 'Tech Leadership'],
-      },
-      create: {
-        email: 'mentee@daleel.dev',
-        passwordHash,
-        name: 'Ali Hassan',
-        bio: 'Software engineer leveling up in system design, TypeScript, and engineering leadership.',
-        interests: ['System Design', 'TypeScript', 'React', 'Tech Leadership'],
-      },
+      update: demoMenteeFields,
+      create: { email: 'mentee@daleel.dev', ...demoMenteeFields },
     });
 
+    const freshMenteeFields = {
+      passwordHash,
+      name: 'Nour El-Din',
+      bio: null,
+      interests: [],
+    };
     const freshMentee = await prisma.user.upsert({
       where: { email: 'new.mentee@daleel.dev' },
-      update: {
-        name: 'Nour El-Din',
-        bio: null,
-        interests: [],
-      },
-      create: {
-        email: 'new.mentee@daleel.dev',
-        passwordHash,
-        name: 'Nour El-Din',
-        bio: null,
-        interests: [],
-      },
+      update: freshMenteeFields,
+      create: { email: 'new.mentee@daleel.dev', ...freshMenteeFields },
     });
 
     // 2. Seed Mentors (14 active, 1 inactive)
     const seededMentorsByEmail = new Map<string, string>();
     for (const mentor of MENTORS_TO_SEED) {
+      const userFields = {
+        passwordHash,
+        name: mentor.name,
+        bio: mentor.bio,
+        interests: [...mentor.interests],
+      };
       const user = await prisma.user.upsert({
         where: { email: mentor.email },
-        update: {
-          name: mentor.name,
-          bio: mentor.bio,
-          interests: mentor.interests,
-        },
-        create: {
-          email: mentor.email,
-          passwordHash,
-          name: mentor.name,
-          bio: mentor.bio,
-          interests: mentor.interests,
-        },
+        update: userFields,
+        create: { email: mentor.email, ...userFields },
       });
 
+      const profileFields = {
+        headline: mentor.headline,
+        about: mentor.about,
+        skills: [...mentor.skills],
+        yearsOfExperience: mentor.yearsOfExperience,
+        linkedinUrl: mentor.linkedinUrl,
+        isActive: mentor.isActive,
+      };
       const mentorProfile = await prisma.mentorProfile.upsert({
         where: { userId: user.id },
-        update: {
-          headline: mentor.headline,
-          about: mentor.about,
-          skills: mentor.skills,
-          yearsOfExperience: mentor.yearsOfExperience,
-          linkedinUrl: mentor.linkedinUrl,
-          isActive: mentor.isActive,
-        },
-        create: {
-          userId: user.id,
-          headline: mentor.headline,
-          about: mentor.about,
-          skills: mentor.skills,
-          yearsOfExperience: mentor.yearsOfExperience,
-          linkedinUrl: mentor.linkedinUrl,
-          isActive: mentor.isActive,
-        },
+        update: profileFields,
+        create: { userId: user.id, ...profileFields },
       });
 
       const existingExperiences = await prisma.mentorExperience.count({
         where: { mentorProfileId: mentorProfile.id },
       });
       if (existingExperiences === 0) {
-        await prisma.mentorExperience.createMany({
-          data: buildSeedExperiences(mentor).map((exp) => ({
-            mentorProfileId: mentorProfile.id,
-            title: exp.title,
-            company: exp.company,
-            startYear: exp.startYear,
-            endYear: exp.endYear,
-            summary: exp.summary,
-          })),
-        });
-        await prisma.mentorProfile.update({
-          where: { id: mentorProfile.id },
-          data: { embeddingModel: null },
-        });
+        await prisma.$transaction([
+          prisma.mentorExperience.createMany({
+            data: buildSeedExperiences(mentor).map((exp) => ({
+              mentorProfileId: mentorProfile.id,
+              title: exp.title,
+              company: exp.company,
+              startYear: exp.startYear,
+              endYear: exp.endYear,
+              summary: exp.summary,
+            })),
+          }),
+          prisma.mentorProfile.update({
+            where: { id: mentorProfile.id },
+            data: { embeddingModel: null },
+          }),
+        ]);
       }
 
       seededMentorsByEmail.set(mentor.email, user.id);
     }
 
     // 3. Seed Conversations & Messages for demoMentee (including a 65-message thread for pagination testing)
-    const sarahId = seededMentorsByEmail.get('sarah.mansour@daleel.dev');
-    const omarId = seededMentorsByEmail.get('omar.sherif@daleel.dev');
-    const linaId = seededMentorsByEmail.get('lina.haddad@daleel.dev');
-    const khaledId = seededMentorsByEmail.get('khaled.elsayed@daleel.dev');
+    const conversationSpecs: readonly {
+      readonly email: string;
+      readonly buildMessages: (mentorId: string) => readonly {
+        readonly senderId: string;
+        readonly content: string;
+        readonly isEdited?: boolean;
+      }[];
+    }[] = [
+      {
+        email: 'sarah.mansour@daleel.dev',
+        buildMessages: (sarahId) => {
+          const longThread: {
+            senderId: string;
+            content: string;
+            isEdited?: boolean;
+          }[] = [
+            {
+              senderId: demoMentee.id,
+              content:
+                'Hi Sarah! I saw your profile and would love to discuss transitioning from senior backend work to Staff-level architecture.',
+            },
+            {
+              senderId: sarahId,
+              content:
+                'Hi Ali! Welcome — happy to help. What kind of systems are you currently owning?',
+            },
+            {
+              senderId: demoMentee.id,
+              content:
+                'Mostly NestJS microservices, PostgreSQL, and a few async worker queues.',
+              isEdited: true,
+            },
+          ];
 
-    let seededThreads = 0;
-
-    if (sarahId) {
-      const longThread: {
-        senderId: string;
-        content: string;
-        isEdited?: boolean;
-      }[] = [
-        {
-          senderId: demoMentee.id,
-          content:
-            'Hi Sarah! I saw your profile and would love to discuss transitioning from senior backend work to Staff-level architecture.',
+          for (let i = 4; i <= 65; i += 1) {
+            const fromMentee = i % 2 === 0;
+            longThread.push({
+              senderId: fromMentee ? demoMentee.id : sarahId,
+              content: fromMentee
+                ? `Message #${i}: Sharing follow-up notes on RFC structure, latency budgets, and service boundaries.`
+                : `Message #${i}: Great point — focus on clear trade-offs, failure modes, and measurable SLOs in your RFC.`,
+            });
+          }
+          return longThread;
         },
-        {
-          senderId: sarahId,
-          content:
-            'Hi Ali! Welcome — happy to help. What kind of systems are you currently owning?',
-        },
-        {
-          senderId: demoMentee.id,
-          content:
-            'Mostly NestJS microservices, PostgreSQL, and a few async worker queues.',
-          isEdited: true,
-        },
-      ];
-
-      for (let i = 4; i <= 65; i += 1) {
-        const fromMentee = i % 2 === 0;
-        longThread.push({
-          senderId: fromMentee ? demoMentee.id : sarahId,
-          content: fromMentee
-            ? `Message #${i}: Sharing follow-up notes on RFC structure, latency budgets, and service boundaries.`
-            : `Message #${i}: Great point — focus on clear trade-offs, failure modes, and measurable SLOs in your RFC.`,
-        });
-      }
-
-      if (
-        await seedConversationWithMessages(
-          prisma,
-          demoMentee.id,
-          sarahId,
-          longThread,
-        )
-      ) {
-        seededThreads += 1;
-      }
-    }
-
-    if (omarId) {
-      if (
-        await seedConversationWithMessages(prisma, demoMentee.id, omarId, [
+      },
+      {
+        email: 'omar.sherif@daleel.dev',
+        buildMessages: (omarId) => [
           {
             senderId: demoMentee.id,
             content:
@@ -515,15 +500,11 @@ async function main(): Promise<void> {
             content:
               'Makes total sense, thank you! Would love a mock review soon.',
           },
-        ])
-      ) {
-        seededThreads += 1;
-      }
-    }
-
-    if (linaId) {
-      if (
-        await seedConversationWithMessages(prisma, demoMentee.id, linaId, [
+        ],
+      },
+      {
+        email: 'lina.haddad@daleel.dev',
+        buildMessages: (linaId) => [
           {
             senderId: demoMentee.id,
             content:
@@ -534,15 +515,11 @@ async function main(): Promise<void> {
             content:
               'Start with semantic tokens before component variants so Figma and code speak the exact same language.',
           },
-        ])
-      ) {
-        seededThreads += 1;
-      }
-    }
-
-    if (khaledId) {
-      if (
-        await seedConversationWithMessages(prisma, demoMentee.id, khaledId, [
+        ],
+      },
+      {
+        email: 'khaled.elsayed@daleel.dev',
+        buildMessages: (khaledId) => [
           {
             senderId: demoMentee.id,
             content:
@@ -553,7 +530,21 @@ async function main(): Promise<void> {
             content:
               'Start with a small labeled golden set of queries and measure recall@k before tuning model weights.',
           },
-        ])
+        ],
+      },
+    ];
+
+    let seededThreads = 0;
+    for (const spec of conversationSpecs) {
+      const mentorId = seededMentorsByEmail.get(spec.email);
+      if (
+        mentorId &&
+        (await seedConversationWithMessages(
+          prisma,
+          demoMentee.id,
+          mentorId,
+          spec.buildMessages(mentorId),
+        ))
       ) {
         seededThreads += 1;
       }

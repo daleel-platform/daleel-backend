@@ -12,8 +12,25 @@ import {
   Max,
   MaxLength,
   Min,
+  Validate,
   ValidateNested,
+  ValidatorConstraint,
+  type ValidationArguments,
+  type ValidatorConstraintInterface,
 } from 'class-validator';
+
+@ValidatorConstraint({ name: 'isEndYearAfterOrEqualStartYear', async: false })
+class IsEndYearAfterOrEqualStartYear implements ValidatorConstraintInterface {
+  validate(endYear: unknown, args: ValidationArguments): boolean {
+    if (typeof endYear !== 'number') return true;
+    const { startYear } = args.object as MentorExperienceInputDto;
+    return typeof startYear !== 'number' || endYear >= startYear;
+  }
+
+  defaultMessage(): string {
+    return 'endYear must be greater than or equal to startYear';
+  }
+}
 
 export class MentorExperienceInputDto {
   @ApiProperty({ example: 'Staff Software Engineer' })
@@ -50,6 +67,7 @@ export class MentorExperienceInputDto {
   @IsInt()
   @Min(1960)
   @Max(2035)
+  @Validate(IsEndYearAfterOrEqualStartYear)
   endYear?: number | null;
 
   @ApiProperty({

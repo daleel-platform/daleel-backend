@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { EMBEDDING_CLIENT } from './embedding.provider.js';
 import {
+  MENTOR_EXPERIENCE_ORDER_BY,
   MentorEmbeddingService,
   menteeText,
   mentorText,
@@ -40,6 +41,25 @@ describe('MentorEmbeddingService', () => {
   it('builds the texts that get embedded', () => {
     expect(mentorText(mentor)).toBe('Frontend. I teach UI. Skills: React');
     expect(mentorText({ ...mentor, skills: [] })).toBe('Frontend. I teach UI');
+    expect(
+      mentorText({
+        ...mentor,
+        experiences: [
+          {
+            title: 'Staff Engineer',
+            company: 'Vercel',
+            summary: 'Led React runtime work',
+          },
+          {
+            title: 'Senior Engineer',
+            company: 'Acme',
+            summary: 'Built design system',
+          },
+        ],
+      }),
+    ).toBe(
+      'Frontend. I teach UI. Skills: React. Experience: Staff Engineer at Vercel: Led React runtime work; Senior Engineer at Acme: Built design system',
+    );
     expect(menteeText(['React', 'SQL'], ' Student ')).toMatch(
       /^Represent this sentence for searching relevant passages: Interests: React, SQL\. Student$/,
     );
@@ -105,6 +125,12 @@ describe('MentorEmbeddingService', () => {
             { embeddingModel: { not: 'test/model' } },
           ],
         },
+        select: expect.objectContaining({
+          experiences: {
+            select: { title: true, company: true, summary: true },
+            orderBy: MENTOR_EXPERIENCE_ORDER_BY,
+          },
+        }),
       }),
     );
     expect(mentorProfile.updateMany).toHaveBeenCalledWith({

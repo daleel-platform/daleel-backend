@@ -13,6 +13,11 @@ import {
 /** Mentors embedded per batch during the startup backfill. */
 const BACKFILL_BATCH_SIZE = 32;
 
+export const MENTOR_EXPERIENCE_ORDER_BY = [
+  { endYear: { sort: 'desc' as const, nulls: 'first' as const } },
+  { startYear: 'desc' as const },
+];
+
 /**
  * BGE models are trained to compare a short query against longer passages
  * when the query carries this instruction (see the bge-small-en-v1.5 model card).
@@ -138,6 +143,7 @@ export class MentorEmbeddingService implements OnApplicationBootstrap {
           skills: true,
           experiences: {
             select: { title: true, company: true, summary: true },
+            orderBy: MENTOR_EXPERIENCE_ORDER_BY,
           },
         },
         orderBy: { id: 'asc' },

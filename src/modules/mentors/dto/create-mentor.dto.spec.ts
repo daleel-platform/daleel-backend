@@ -115,4 +115,44 @@ describe('mentor profile validation', () => {
       ).toBeGreaterThan(0);
     }
   });
+  it('validates work experience date ranges and allows null endYear for current roles', () => {
+    const validExperiences = [
+      {
+        title: 'Staff Engineer',
+        company: 'Stripe',
+        startYear: 2022,
+        endYear: null,
+        summary: 'Current role',
+      },
+      {
+        title: 'Engineer',
+        company: 'Acme',
+        startYear: 2020,
+        endYear: 2020,
+        summary: 'Same-year role',
+      },
+    ];
+    expect(
+      validateSync(
+        plainToInstance(CreateMentorDto, {
+          ...valid,
+          experiences: validExperiences,
+        }),
+      ),
+    ).toEqual([]);
+
+    const inverted = plainToInstance(CreateMentorDto, {
+      ...valid,
+      experiences: [
+        {
+          title: 'Engineer',
+          company: 'Acme',
+          startYear: 2024,
+          endYear: 2020,
+          summary: 'Inverted years',
+        },
+      ],
+    });
+    expect(validateSync(inverted).length).toBeGreaterThan(0);
+  });
 });

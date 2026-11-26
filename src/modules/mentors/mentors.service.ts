@@ -8,10 +8,16 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { UsersService } from '../users/users.service.js';
 import { PaginationMetaDto } from '../../common/pagination/pagination-meta.dto.js';
-import { CreateMentorDto } from './dto/create-mentor.dto.js';
+import {
+  CreateMentorDto,
+  type MentorExperienceInputDto,
+} from './dto/create-mentor.dto.js';
 import { UpdateMentorDto } from './dto/update-mentor.dto.js';
 import { MentorQueryDto } from './dto/mentor-query.dto.js';
-import { MentorEmbeddingService } from './mentor-embedding.service.js';
+import {
+  MENTOR_EXPERIENCE_ORDER_BY,
+  MentorEmbeddingService,
+} from './mentor-embedding.service.js';
 import {
   MentorResponseDto,
   PaginatedMentorResponseDto,
@@ -24,10 +30,7 @@ export const PUBLIC_USER = {
 export const MENTOR_PUBLIC_INCLUDE = {
   ...PUBLIC_USER,
   experiences: {
-    orderBy: [
-      { endYear: { sort: 'desc' as const, nulls: 'first' as const } },
-      { startYear: 'desc' as const },
-    ],
+    orderBy: MENTOR_EXPERIENCE_ORDER_BY,
   },
 } satisfies Prisma.MentorProfileInclude;
 
@@ -58,13 +61,7 @@ export class MentorsService {
         ...(dto.experiences && dto.experiences.length > 0
           ? {
               experiences: {
-                create: dto.experiences.map((exp) => ({
-                  title: exp.title,
-                  company: exp.company,
-                  startYear: exp.startYear,
-                  endYear: exp.endYear ?? null,
-                  summary: exp.summary,
-                })),
+                create: this.toExperienceCreateData(dto.experiences),
               },
             }
           : {}),
@@ -102,13 +99,7 @@ export class MentorsService {
         ? {
             experiences: {
               deleteMany: {},
-              create: dto.experiences.map((exp) => ({
-                title: exp.title,
-                company: exp.company,
-                startYear: exp.startYear,
-                endYear: exp.endYear ?? null,
-                summary: exp.summary,
-              })),
+              create: this.toExperienceCreateData(dto.experiences),
             },
           }
         : {}),
@@ -123,6 +114,18 @@ export class MentorsService {
     isActive: boolean,
   ): Promise<MentorResponseDto> {
     return this.updateOwn(userId, { isActive });
+  }
+
+  private toExperienceCreateData(
+    experiences: readonly MentorExperienceInputDto[],
+  ): Prisma.MentorExperienceCreateWithoutMentorProfileInput[] {
+    return experiences.map((exp) => ({
+      title: exp.title,
+      company: exp.company,
+      startYear: exp.startYear,
+      endYear: exp.endYear ?? null,
+      summary: exp.summary,
+    }));
   }
 
   private async updateOwn(

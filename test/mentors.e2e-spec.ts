@@ -104,6 +104,40 @@ describe('Mentors (PostgreSQL e2e)', () => {
       { ...dto, linkedinUrl: 'bad' },
       { ...dto, userId: ids[1] },
       { ...dto, isActive: false },
+      {
+        ...dto,
+        experiences: [
+          {
+            title: 'Engineer',
+            company: 'Acme',
+            startYear: 2024,
+            endYear: 2020,
+            summary: 'Inverted dates',
+          },
+        ],
+      },
+      {
+        ...dto,
+        experiences: [
+          {
+            title: ' ',
+            company: 'Acme',
+            startYear: 2020,
+            summary: 'Blank title',
+          },
+        ],
+      },
+      {
+        ...dto,
+        experiences: [
+          {
+            title: 'Engineer',
+            company: 'Acme',
+            startYear: 1950,
+            summary: 'Out of range year',
+          },
+        ],
+      },
     ]) {
       await request(app.getHttpServer())
         .post(base)
@@ -411,5 +445,115 @@ describe('Mentors (PostgreSQL e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/users/me/avatar')
       .expect(404);
+  });
+  it('creates, orders newest-first, and atomically replaces mentor experiences', async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: `mentor-${marker}-exp@example.com`,
+        name: `Mentor Exp ${marker}`,
+        passwordHash: 'private-password',
+      },
+    });
+    ids.push(user.id);
+    const token = await app.get(JwtService).signAsync(
+      { sub: user.id },
+      {
+        secret: app.get(ConfigService).getOrThrow<string>('JWT_SECRET'),
+        expiresIn: 900,
+      },
+    );
+
+    const created = await request(app.getHttpServer())
+      .post(base)
+      .auth(token, { type: 'bearer' })
+      .send({
+        ...dto,
+        experiences: [
+          {
+            title: 'Software Engineer',
+            company: 'EarlyCo',
+            startYear: 2018,
+            endYear: 2020,
+            summary: 'Early role',
+          },
+          {
+            title: 'Staff Engineer',
+            company: 'CurrentCo',
+            startYear: 2023,
+            endYear: null,
+            summary: 'Current role',
+          },
+          {
+            title: 'Senior Engineer',
+            company: 'MidCo',
+            startYear: 2020,
+            endYear: 2023,
+            summary: 'Mid role',
+          },
+        ],
+      })
+      .expect(201);
+
+    const createdTitles = created.body.data.experiences.map(
+      (e: { title: string }) => e.title,
+    );
+    expect(createdTitles).toEqual([
+      'Staff Engineer',
+      'Senior Engineer',
+      'Software Engineer',
+    ]);
+
+    const fetched = await request(app.getHttpServer())
+      .get(base + '/' + created.body.data.id)
+      .expect(200);
+    expect(
+      fetched.body.data.experiences.map((e: { title: string }) => e.title),
+    ).toEqual(['Staff Engineer', 'Senior Engineer', 'Software Engineer']);
+
+    await request(app.getHttpServer())
+      .patch(base + '/me')
+      .auth(token, { type: 'bearer' })
+      .send({
+        experiences: [
+          {
+            title: 'Invalid Role',
+            company: 'BadCo',
+            startYear: 2025,
+            endYear: 2021,
+            summary: 'Inverted years',
+          },
+        ],
+      })
+      .expect(400);
+
+    const replaced = await request(app.getHttpServer())
+      .patch(base + '/me')
+      .auth(token, { type: 'bearer' })
+      .send({
+        experiences: [
+          {
+            title: 'Principal Engineer',
+            company: 'NewCo',
+            startYear: 2024,
+            summary: 'Latest role',
+          },
+        ],
+      })
+      .expect(200);
+    expect(replaced.body.data.experiences).toHaveLength(1);
+    expect(replaced.body.data.experiences[0]).toMatchObject({
+      title: 'Principal Engineer',
+      company: 'NewCo',
+      startYear: 2024,
+      endYear: null,
+      summary: 'Latest role',
+    });
+
+    const cleared = await request(app.getHttpServer())
+      .patch(base + '/me')
+      .auth(token, { type: 'bearer' })
+      .send({ experiences: [] })
+      .expect(200);
+    expect(cleared.body.data.experiences).toEqual([]);
   });
 });

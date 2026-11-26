@@ -6,10 +6,17 @@
  * finalScore = skill * skillScore + experience * expScore + semantic * aiScore
  */
 export const MATCH_WEIGHTS = {
-  skill: 0.5,
-  experience: 0.15,
-  semantic: 0.35,
+  skill: 0.35,
+  experience: 0.1,
+  semantic: 0.55,
 } as const;
+
+/**
+ * When AI embeddings are active, strong semantic alignment partially bridges
+ * vocabulary gaps (e.g. "Frontend Development" vs "React") while still keeping
+ * exact skill matches ranked higher.
+ */
+const SEMANTIC_SKILL_BRIDGE = 0.75;
 
 /** Experience stops adding to the score after this many years. */
 export const EXPERIENCE_CAP_YEARS = 10;
@@ -90,13 +97,21 @@ export interface ScoreParts {
 /** Weighted sum of the parts, as a whole percentage 0..100. */
 export function combineScores(parts: ScoreParts): number {
   const w = MATCH_WEIGHTS;
+  if (parts.semantic === null) {
+    const total =
+      (w.skill * parts.skill + w.experience * parts.experience) /
+      (w.skill + w.experience);
+    return Math.round(Math.max(0, Math.min(total, 1)) * 100);
+  }
+
+  const effectiveSkill = Math.max(
+    parts.skill,
+    parts.semantic * SEMANTIC_SKILL_BRIDGE,
+  );
   const total =
-    parts.semantic === null
-      ? (w.skill * parts.skill + w.experience * parts.experience) /
-        (w.skill + w.experience)
-      : w.skill * parts.skill +
-        w.experience * parts.experience +
-        w.semantic * parts.semantic;
+    w.skill * effectiveSkill +
+    w.experience * parts.experience +
+    w.semantic * parts.semantic;
   return Math.round(Math.max(0, Math.min(total, 1)) * 100);
 }
 

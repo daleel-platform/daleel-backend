@@ -44,9 +44,26 @@ model MentorProfile {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experiences MentorExperience[]
 
   @@map("mentor_profiles")
+}
+
+model MentorExperience {
+  id              String   @id @default(uuid())
+  mentorProfileId String   @map("mentor_profile_id")
+  title           String
+  company         String
+  startYear       Int      @map("start_year")
+  endYear         Int?     @map("end_year")
+  summary         String
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  mentorProfile MentorProfile @relation(fields: [mentorProfileId], references: [id], onDelete: Cascade)
+
+  @@index([mentorProfileId])
+  @@map("mentor_experiences")
 }
 
 model Conversation {

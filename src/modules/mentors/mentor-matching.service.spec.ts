@@ -45,10 +45,15 @@ describe('mentor matching scoring', () => {
   it('combines weighted parts and redistributes the semantic weight when AI is off', () => {
     expect(combineScores({ skill: 1, experience: 1, semantic: 1 })).toBe(100);
     expect(combineScores({ skill: 0, experience: 0, semantic: 0 })).toBe(0);
-    // 0.5*1 + 0.15*0 + 0.35*0 = 50
-    expect(combineScores({ skill: 1, experience: 0, semantic: 0 })).toBe(50);
-    // without AI: 0.5 / (0.5 + 0.15) ≈ 77
-    expect(combineScores({ skill: 1, experience: 0, semantic: null })).toBe(77);
+    // 0.35*1 + 0.1*0 + 0.55*0 = 35
+    expect(combineScores({ skill: 1, experience: 0, semantic: 0 })).toBe(35);
+    // strong semantic bridges vocabulary gap when exact skill overlap is 0:
+    // 0.35*(0.8*0.75) + 0.1*0.5 + 0.55*0.8 = 0.21 + 0.05 + 0.44 = 70
+    expect(combineScores({ skill: 0, experience: 0.5, semantic: 0.8 })).toBe(
+      70,
+    );
+    // without AI: 0.35 / (0.35 + 0.1) ≈ 78
+    expect(combineScores({ skill: 1, experience: 0, semantic: null })).toBe(78);
     expect(combineScores({ skill: 1, experience: 1, semantic: null })).toBe(
       100,
     );
@@ -150,12 +155,13 @@ describe('MentorMatchingService', () => {
     ]);
     expect(result.items[0]).toMatchObject({
       matchedSkills: ['react', 'SQL'],
-      // (0.5*1 + 0.15*0.2) / 0.65 ≈ 82
+      // (0.35*1 + 0.1*0.2) / 0.45 ≈ 82
       matchScore: 82,
     });
     expect(result.items[2]).toMatchObject({
       matchedSkills: [],
-      matchScore: 23,
+      // (0.35*0 + 0.1*1) / 0.45 ≈ 22
+      matchScore: 22,
     });
 
     await service.recommend('mentee', 10);
@@ -230,8 +236,9 @@ describe('MentorMatchingService', () => {
       );
       expect(result.semanticScoring).toBe(true);
       expect(result.items.map((i) => i.mentor.id)).toEqual(['ui', 'backend']);
-      // 0.15*0.5 + 0.35*cos([1,0],[0.9,0.1]) ≈ 0.075 + 0.348 = 42
-      expect(result.items[0].matchScore).toBe(42);
+      // cos([1,0],[0.9,0.1]) ≈ 0.9939
+      // 0.35*(0.9939*0.75) + 0.1*0.5 + 0.55*0.9939 ≈ 86
+      expect(result.items[0].matchScore).toBe(86);
       expect(result.items[0].rationale).toContain(
         'Profile closely matches your goals',
       );
@@ -247,8 +254,8 @@ describe('MentorMatchingService', () => {
 
       const result = await service.recommend('mentee', 10);
 
-      // skill 1, experience 0, semantic redistributed: 0.5 / 0.65 = 77
-      expect(result.items.map((i) => i.matchScore)).toEqual([77, 77]);
+      // skill 1, experience 0, semantic redistributed: 0.35 / 0.45 ≈ 78
+      expect(result.items.map((i) => i.matchScore)).toEqual([78, 78]);
     });
 
     it('degrades to skill overlap when the mentee cannot be embedded, and does not cache that', async () => {
@@ -261,7 +268,7 @@ describe('MentorMatchingService', () => {
       const result = await service.recommend('mentee', 10);
 
       expect(result.semanticScoring).toBe(false);
-      expect(result.items[0]).toMatchObject({ matchScore: 77 });
+      expect(result.items[0]).toMatchObject({ matchScore: 78 });
       await service.recommend('mentee', 10);
       expect(mentorProfile.findMany).toHaveBeenCalledTimes(2);
     });

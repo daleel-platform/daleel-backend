@@ -18,8 +18,18 @@ import {
 } from './dto/mentor-response.dto.js';
 
 export const PUBLIC_USER = {
-  user: { select: { name: true, avatarUrl: true, bio: true } },
+  user: { select: { id: true, name: true, avatarUrl: true, bio: true } },
 } as const;
+
+export const MENTOR_PUBLIC_INCLUDE = {
+  ...PUBLIC_USER,
+  experiences: {
+    orderBy: [
+      { endYear: { sort: 'desc' as const, nulls: 'first' as const } },
+      { startYear: 'desc' as const },
+    ],
+  },
+} satisfies Prisma.MentorProfileInclude;
 
 /** Vectors are internal to matching; never load them for public responses. */
 const NO_EMBEDDING = { embedding: true, embeddingModel: true } as const;
@@ -45,10 +55,23 @@ export class MentorsService {
         skills: dto.skills,
         yearsOfExperience: dto.yearsOfExperience,
         linkedinUrl: dto.linkedinUrl,
+        ...(dto.experiences && dto.experiences.length > 0
+          ? {
+              experiences: {
+                create: dto.experiences.map((exp) => ({
+                  title: exp.title,
+                  company: exp.company,
+                  startYear: exp.startYear,
+                  endYear: exp.endYear ?? null,
+                  summary: exp.summary,
+                })),
+              },
+            }
+          : {}),
       };
       const profile = await this.prisma.mentorProfile.create({
         data,
-        include: PUBLIC_USER,
+        include: MENTOR_PUBLIC_INCLUDE,
         omit: NO_EMBEDDING,
       });
       await this.embeddings.refresh(profile.id, profile);
@@ -75,6 +98,20 @@ export class MentorsService {
       skills: dto.skills,
       yearsOfExperience: dto.yearsOfExperience,
       linkedinUrl: dto.linkedinUrl,
+      ...(dto.experiences !== undefined
+        ? {
+            experiences: {
+              deleteMany: {},
+              create: dto.experiences.map((exp) => ({
+                title: exp.title,
+                company: exp.company,
+                startYear: exp.startYear,
+                endYear: exp.endYear ?? null,
+                summary: exp.summary,
+              })),
+            },
+          }
+        : {}),
       embeddingModel: null,
     });
     await this.embeddings.refresh(profile.id, profile);
@@ -96,7 +133,7 @@ export class MentorsService {
       return await this.prisma.mentorProfile.update({
         where: { userId },
         data,
-        include: PUBLIC_USER,
+        include: MENTOR_PUBLIC_INCLUDE,
         omit: NO_EMBEDDING,
       });
     } catch (error) {
@@ -113,7 +150,7 @@ export class MentorsService {
   async findOne(id: string): Promise<MentorResponseDto> {
     const mentor = await this.prisma.mentorProfile.findUnique({
       where: { id, isActive: true },
-      include: PUBLIC_USER,
+      include: MENTOR_PUBLIC_INCLUDE,
       omit: NO_EMBEDDING,
     });
     if (!mentor) throw new NotFoundException('Mentor profile not found');

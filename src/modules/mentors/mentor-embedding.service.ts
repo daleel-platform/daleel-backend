@@ -21,17 +21,30 @@ const BACKFILL_BATCH_SIZE = 32;
 const QUERY_INSTRUCTION =
   'Represent this sentence for searching relevant passages: ';
 
+interface MentorExperienceText {
+  readonly title: string;
+  readonly company: string;
+  readonly summary: string;
+}
+
 interface MentorText {
   readonly headline: string;
   readonly about: string;
   readonly skills: readonly string[];
+  readonly experiences?: readonly MentorExperienceText[];
 }
 
 export function mentorText(mentor: MentorText): string {
+  const experiencePart = mentor.experiences?.length
+    ? `Experience: ${mentor.experiences
+        .map((exp) => `${exp.title} at ${exp.company}: ${exp.summary}`)
+        .join('; ')}`
+    : '';
   return [
     mentor.headline,
     mentor.about,
     mentor.skills.length ? `Skills: ${mentor.skills.join(', ')}` : '',
+    experiencePart,
   ]
     .filter(Boolean)
     .join('. ');
@@ -118,7 +131,15 @@ export class MentorEmbeddingService implements OnApplicationBootstrap {
         where: {
           OR: [{ embeddingModel: null }, { embeddingModel: { not: model } }],
         },
-        select: { id: true, headline: true, about: true, skills: true },
+        select: {
+          id: true,
+          headline: true,
+          about: true,
+          skills: true,
+          experiences: {
+            select: { title: true, company: true, summary: true },
+          },
+        },
         orderBy: { id: 'asc' },
         take: BACKFILL_BATCH_SIZE,
       });
